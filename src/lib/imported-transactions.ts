@@ -1,5 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { ImportedPosting, StoredImportedPosting } from "@/lib/postings";
+import {
+  inferPostingKind,
+  type ImportedPosting,
+  type StoredImportedPosting,
+} from "@/lib/postings";
 
 type ImportedTransactionRow = {
   id: string;
@@ -11,7 +15,6 @@ type ImportedTransactionRow = {
   amount_minor: number;
   currency: "DKK";
   category: string | null;
-  kind: StoredImportedPosting["kind"];
   raw: Record<string, string>;
   created_at: string;
 };
@@ -23,7 +26,7 @@ export async function readImportedTransactions(
   const { data, error } = await supabase
     .from("imported_transactions")
     .select(
-      "id, source_hash, account_name, account_number, booking_date, description, amount_minor, currency, category, kind, raw, created_at",
+      "id, source_hash, account_name, account_number, booking_date, description, amount_minor, currency, category, raw, created_at",
     )
     .eq("user_id", userId)
     .order("booking_date", { ascending: false })
@@ -43,7 +46,7 @@ export async function readImportedTransactions(
     amountMinor: row.amount_minor,
     currency: row.currency,
     category: row.category ?? "Andet",
-    kind: row.kind,
+    kind: inferPostingKind(row.category ?? "Andet", row.amount_minor),
     raw: row.raw,
     createdAt: row.created_at,
   }));
@@ -86,18 +89,11 @@ export async function insertImportedTransactions(
         amount_minor: posting.amountMinor,
         currency: posting.currency,
         category: posting.category,
-        kind: posting.kind,
         raw: posting.raw,
       })),
     );
 
     if (error) {
-      if (error.message?.includes("kind")) {
-        throw new Error(
-          "Supabase-tabellen mangler feltet 'kind'. Kør migrationen 004_import_schema_repair.sql og prøv igen.",
-        );
-      }
-
       throw error;
     }
   }

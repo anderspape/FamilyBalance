@@ -52,7 +52,7 @@ type PostingRecord = StoredImportedPosting & {
   date: Date;
 };
 
-function parseCsvLine(line: string) {
+function parseCsvLine(line: string, delimiter = ";") {
   const cells: string[] = [];
   let cell = "";
   let quoted = false;
@@ -72,7 +72,7 @@ function parseCsvLine(line: string) {
       continue;
     }
 
-    if (char === ";" && !quoted) {
+    if (char === delimiter && !quoted) {
       cells.push(cell.trim());
       cell = "";
       continue;
@@ -86,11 +86,27 @@ function parseCsvLine(line: string) {
 }
 
 function parseAmount(value: string) {
-  return Number(value.replace(/\./g, "").replace(",", "."));
+  const normalized = value
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(/\.(?=\d{3}(\D|$))/g, "")
+    .replace(",", ".");
+
+  return Number(normalized);
 }
 
 function parseDate(value: string) {
-  const [day, month, year] = value.split("-").map(Number);
+  const match = value.match(/(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})/);
+
+  if (!match) {
+    return null;
+  }
+
+  const [, dayValue, monthValue, yearValue] = match;
+  const day = Number(dayValue);
+  const month = Number(monthValue);
+  const year =
+    yearValue.length === 2 ? Number(`20${yearValue}`) : Number(yearValue);
 
   if (!day || !month || !year) {
     return null;
@@ -134,6 +150,66 @@ function cleanName(row: string[]) {
   return parts
     .replace(/\s*Aftalenr\.\s*\d+/gi, "")
     .replace(/\s*Betalingsid\s+\d+/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectDelimiter(text: string) {
+  const firstDataLine =
+    text
+      .replace(/^\uFEFF/, "")
+      .split(/\r?\n/)
+      .find((line) => line.trim()) ?? "";
+  const semicolons = (firstDataLine.match(/;/g) ?? []).length;
+  const commas = (firstDataLine.match(/,/g) ?? []).length;
+
+  return semicolons >= commas ? ";" : ",";
+}
+
+function findAmountCell(row: string[]) {
+  const preferred = parseAmount(row[4] ?? "");
+
+  if (Number.isFinite(preferred)) {
+    return preferred;
+  }
+
+  for (const cell of row) {
+    if (!/[+-]?\d/.test(cell)) continue;
+    if (parseDate(cell)) continue;
+
+    const amount = parseAmount(cell);
+
+    if (Number.isFinite(amount) && Math.abs(amount) > 0) {
+      return amount;
+    }
+  }
+
+  return Number.NaN;
+}
+
+function findDateCell(row: string[]) {
+  return parseDate(row[7] ?? "") ?? row.map(parseDate).find(Boolean) ?? null;
+}
+
+function findAccountNumber(row: string[]) {
+  return (
+    row.find((cell) => /^\d{4}\s*\d{6,12}$/.test(cell.trim())) ??
+    row[2] ??
+    row[3] ??
+    "Ukendt konto"
+  );
+}
+
+function fallbackDescription(row: string[]) {
+  return row
+    .filter((cell) => {
+      if (!cell.trim()) return false;
+      if (parseDate(cell)) return false;
+      if (Number.isFinite(parseAmount(cell))) return false;
+      if (/^\d{4}\s*\d{6,12}$/.test(cell.trim())) return false;
+      return !/^(dato|tekst|beløb|saldo|valuta|konto|bogføring)/i.test(cell);
+    })
+    .join(" ")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -269,6 +345,29 @@ function categoryFor(text: string, amount: number) {
   return { category: "Andet", kind: "expense" as const };
 }
 
+export function inferPostingKind(
+  category: string,
+  amountMinor: number,
+): ImportedPosting["kind"] {
+  if (amountMinor > 0) {
+    return "income";
+  }
+
+  if (category === "Overførsel") {
+    return "transfer";
+  }
+
+  if (category === "Opsparing") {
+    return "savings";
+  }
+
+  if (["Bolig", "Børn", "Forsikring", "Faste aftaler"].includes(category)) {
+    return "bill";
+  }
+
+  return "expense";
+}
+
 function sourceHash(row: string[], posting: Omit<ImportedPosting, "sourceHash">) {
   return createHash("sha256")
     .update(
@@ -337,24 +436,25 @@ export function applyPostingAccountOverride(
 }
 
 export function parsePostingsCsv(text: string, account?: PostingAccountOverride) {
+  const delimiter = detectDelimiter(text);
   const rows = text
     .replace(/^\uFEFF/, "")
     .trim()
     .split(/\r?\n/)
-    .map(parseCsvLine)
-    .filter((row) => row.length > 7 && row[4] && row[7]);
+    .map((line) => parseCsvLine(line, delimiter))
+    .filter((row) => row.length > 3);
 
   const postings = rows
     .map((row) => {
-      const amount = parseAmount(row[4]);
-      const date = parseDate(row[7]);
-      const description = cleanName(row) || "Ukendt postering";
+      const amount = findAmountCell(row);
+      const date = findDateCell(row);
+      const description = cleanName(row) || fallbackDescription(row) || "Ukendt postering";
 
       if (!Number.isFinite(amount) || !date) {
         return null;
       }
 
-      const accountNumber = row[2] || row[3] || "Ukendt konto";
+      const accountNumber = findAccountNumber(row);
       const accountName = knownAccounts[accountNumber]?.name ?? accountNumber;
       const category = categoryFor(description, amount);
       const posting = {

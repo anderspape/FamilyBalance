@@ -43,7 +43,7 @@ export function BudgetShell({
   const pathname = usePathname();
   const [isDesktop, setIsDesktop] = useState(false);
   const [isSideNavExpanded, setIsSideNavExpanded] = useState(false);
-  const [now, setNow] = useState(() => new Date());
+  const [now, setNow] = useState<Date | null>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1056px)");
@@ -59,9 +59,13 @@ export function BudgetShell({
   }, []);
 
   useEffect(() => {
+    const timeout = window.setTimeout(() => setNow(new Date()), 0);
     const interval = window.setInterval(() => setNow(new Date()), 30_000);
 
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+    };
   }, []);
 
   function closeSideNavAfterNavigation() {
@@ -101,12 +105,14 @@ export function BudgetShell({
           FamilyBalance
         </HeaderName>
         <HeaderGlobalBar>
-          <time className="header-clock" dateTime={now?.toISOString()}>
-            {new Intl.DateTimeFormat("da-DK", {
-              dateStyle: "medium",
-              timeStyle: "short",
-            }).format(now)}
-          </time>
+          {now ? (
+            <time className="header-clock" dateTime={now.toISOString()}>
+              {new Intl.DateTimeFormat("da-DK", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              }).format(now)}
+            </time>
+          ) : null}
           <div className="header-actions">
             {userEmail ? <span className="header-user">{userEmail}</span> : null}
             <Button
