@@ -20,6 +20,53 @@ type ImportedTransactionRow = {
   created_at: string;
 };
 
+type ImportedTransactionBaseRow = Omit<
+  ImportedTransactionRow,
+  "import_account_id"
+>;
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : "";
+  const details =
+    "details" in error && typeof error.details === "string"
+      ? error.details
+      : "";
+
+  return `${message} ${details}`
+    .toLowerCase()
+    .includes(columnName.toLowerCase());
+}
+
+function mapImportedTransactionRow(
+  row: ImportedTransactionRow | ImportedTransactionBaseRow,
+): StoredImportedPosting {
+  const importAccountId =
+    "import_account_id" in row ? row.import_account_id : null;
+
+  return {
+    id: row.id,
+    sourceHash: row.source_hash,
+    importAccountId,
+    accountName: row.account_name,
+    accountNumber: row.account_number,
+    bookingDate: row.booking_date,
+    description: row.description,
+    amountMinor: row.amount_minor,
+    currency: row.currency,
+    category: row.category ?? "Andet",
+    kind: inferPostingKind(row.category ?? "Andet", row.amount_minor),
+    raw: row.raw,
+    createdAt: row.created_at,
+  };
+}
+
 export async function readImportedTransactions(
   supabase: SupabaseClient,
   userId: string,
@@ -33,25 +80,28 @@ export async function readImportedTransactions(
     .order("booking_date", { ascending: false })
     .returns<ImportedTransactionRow[]>();
 
+  if (error && isMissingColumnError(error, "import_account_id")) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("imported_transactions")
+      .select(
+        "id, source_hash, account_name, account_number, booking_date, description, amount_minor, currency, category, raw, created_at",
+      )
+      .eq("user_id", userId)
+      .order("booking_date", { ascending: false })
+      .returns<ImportedTransactionBaseRow[]>();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return (fallbackData ?? []).map(mapImportedTransactionRow);
+  }
+
   if (error) {
     throw error;
   }
 
-  return (data ?? []).map<StoredImportedPosting>((row) => ({
-    id: row.id,
-    sourceHash: row.source_hash,
-    importAccountId: row.import_account_id,
-    accountName: row.account_name,
-    accountNumber: row.account_number,
-    bookingDate: row.booking_date,
-    description: row.description,
-    amountMinor: row.amount_minor,
-    currency: row.currency,
-    category: row.category ?? "Andet",
-    kind: inferPostingKind(row.category ?? "Andet", row.amount_minor),
-    raw: row.raw,
-    createdAt: row.created_at,
-  }));
+  return (data ?? []).map(mapImportedTransactionRow);
 }
 
 export async function insertImportedTransactions(
@@ -80,24 +130,60 @@ export async function insertImportedTransactions(
   );
 
   if (newPostings.length > 0) {
-    const { error } = await supabase.from("imported_transactions").insert(
-      newPostings.map((posting) => ({
-        user_id: userId,
-        source: "csv",
-        source_hash: posting.sourceHash,
-        import_account_id: importAccountId ?? posting.importAccountId ?? null,
-        account_name: posting.accountName,
-        account_number: posting.accountNumber,
-        booking_date: posting.bookingDate,
-        description: posting.description,
-        amount_minor: posting.amountMinor,
-        currency: posting.currency,
-        category: posting.category,
-        raw: posting.raw,
-      })),
-    );
+    const rows = newPostings.map((posting) => ({
+      user_id: userId,
+      source: "csv",
+      source_hash: posting.sourceHash,
+      import_account_id: importAccountId ?? posting.importAccountId ?? null,
+      account_name: posting.accountName,
+      account_number: posting.accountNumber,
+      booking_date: posting.bookingDate,
+      description: posting.description,
+      amount_minor: posting.amountMinor,
+      currency: posting.currency,
+      category: posting.category,
+      raw: posting.raw,
+    }));
+    const { error } = await supabase.from("imported_transactions").insert(rows);
 
-    if (error) {
+    if (error && isMissingColumnError(error, "import_account_id")) {
+      const fallbackRows = rows.map((row) => {
+        const {
+          user_id,
+          source,
+          source_hash,
+          account_name,
+          account_number,
+          booking_date,
+          description,
+          amount_minor,
+          currency,
+          category,
+          raw,
+        } = row;
+
+        return {
+          user_id,
+          source,
+          source_hash,
+          account_name,
+          account_number,
+          booking_date,
+          description,
+          amount_minor,
+          currency,
+          category,
+          raw,
+        };
+      });
+      const { error: fallbackError } = await supabase
+        .from("imported_transactions")
+        .insert(fallbackRows);
+
+      if (fallbackError) {
+        throw fallbackError;
+      }
+    } else if (error) {
       throw error;
     }
   }

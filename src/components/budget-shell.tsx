@@ -17,20 +17,15 @@ import {
 import {
   Dashboard,
   DocumentImport,
-  Finance,
-  Growth,
   List,
   Money,
   Purchase,
-  Renew,
-  Settings,
 } from "@carbon/icons-react";
 
 const navItems = [
   { icon: Dashboard, href: "/overblik", label: "Overblik" },
   { icon: Money, href: "/indkomst", label: "Indkomst" },
   { icon: Purchase, href: "/udgifter", label: "Udgifter" },
-  { icon: Growth, href: "/opsparing", label: "Opsparing" },
   { icon: DocumentImport, href: "/import", label: "Import" },
   { icon: List, href: "/poster", label: "Poster" },
 ];
@@ -76,15 +71,6 @@ export function BudgetShell({
     }
   }
 
-  async function syncBankData() {
-    await fetch("/api/bank/sync", {
-      method: "POST",
-      cache: "no-store",
-    }).catch(() => undefined);
-
-    window.dispatchEvent(new Event("familybalance:sync"));
-  }
-
   async function signOut() {
     await fetch("/auth/logout", {
       method: "POST",
@@ -117,31 +103,6 @@ export function BudgetShell({
           ) : null}
           <div className="header-actions">
             {userEmail ? <span className="header-user">{userEmail}</span> : null}
-            <Button
-              size="sm"
-              renderIcon={Finance}
-              onClick={() => {
-                window.location.href = "/api/bank/connect";
-              }}
-            >
-              Forbind bank
-            </Button>
-            <Button
-              size="sm"
-              kind="secondary"
-              renderIcon={Renew}
-              onClick={syncBankData}
-            >
-              Synkroniser nu
-            </Button>
-            <Button
-              hasIconOnly
-              iconDescription="Indstillinger"
-              kind="ghost"
-              renderIcon={Settings}
-              size="sm"
-              tooltipPosition="bottom"
-            />
             {userEmail ? (
               <Button kind="ghost" onClick={signOut} size="sm">
                 Log ud

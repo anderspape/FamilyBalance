@@ -361,6 +361,12 @@ body {
   font-weight: 400;
 }
 
+.panel__description {
+  margin: 0.5rem 0 0;
+  max-width: 34rem;
+  color: #525252;
+}
+
 .import-layout {
   align-items: start;
 }
@@ -369,17 +375,6 @@ body {
 .import-workspace {
   display: grid;
   gap: 1rem;
-}
-
-.starter-account-grid {
-  display: grid;
-  gap: 0.5rem;
-  margin-bottom: 1.5rem;
-}
-
-.starter-account-grid .cds--btn {
-  max-width: none;
-  width: 100%;
 }
 
 .import-account-form {
@@ -402,7 +397,7 @@ body {
 
 .import-account-option {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.75rem;
   width: 100%;
@@ -443,6 +438,20 @@ body {
   margin-top: 0.125rem;
   color: #6f6f6f;
   font-size: 0.875rem;
+}
+
+.import-account-option__status {
+  justify-self: end;
+  padding: 0.125rem 0.625rem;
+  border-radius: 999px;
+  background: #d0e2ff;
+  color: #0043ce;
+  font-size: 0.875rem;
+}
+
+.import-empty-state {
+  margin: 0;
+  color: #525252;
 }
 
 .accounts-panel {

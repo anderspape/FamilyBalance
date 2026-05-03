@@ -7,17 +7,6 @@ import { CsvImportPanel } from "@/components/csv-import-panel";
 import type { ImportAccount } from "@/lib/import-accounts";
 import { formatDate, formatMinorKr } from "@/lib/money";
 
-const starterAccounts = [
-  {
-    name: "Budgetkonto",
-    description: "Faste udgifter, regninger og fælles betalinger.",
-  },
-  {
-    name: "Husholdning",
-    description: "Dagligvarer, børn, transport og løbende forbrug.",
-  },
-];
-
 export function CsvImportWorkspace() {
   const [accounts, setAccounts] = useState<ImportAccount[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState("");
@@ -98,24 +87,12 @@ export function CsvImportWorkspace() {
       <Column lg={5} md={8} sm={4}>
         <Tile className="panel import-accounts-panel">
           <div className="panel__header">
-              <div>
-                <p className="budget-kicker">CSV-konti</p>
-                <h2>Konti</h2>
-              </div>
-          </div>
-
-          <div className="starter-account-grid">
-            {starterAccounts.map((account) => (
-              <Button
-                key={account.name}
-                kind="tertiary"
-                renderIcon={Add}
-                size="sm"
-                onClick={() => createAccount(account)}
-              >
-                Opret {account.name}
-              </Button>
-            ))}
+            <div>
+              <h2>Opret konto</h2>
+              <p className="panel__description">
+                Tilføj kun en konto, hvis den ikke allerede findes i listen.
+              </p>
+            </div>
           </div>
 
           <form
@@ -172,8 +149,11 @@ export function CsvImportWorkspace() {
           <Tile className="panel import-account-list">
             <div className="panel__header">
               <div>
-                <p className="budget-kicker">Vælg konto</p>
-                <h2>Hvor skal CSV’en lande?</h2>
+                <h2>Oprettede konti</h2>
+                <p className="panel__description">
+                  Vælg den konto, filen hører til. Valget styrer også saldo og
+                  filtrering på Poster-siden.
+                </p>
               </div>
             </div>
             <div className="import-account-options">
@@ -207,10 +187,16 @@ export function CsvImportWorkspace() {
                           : ""}
                       </small>
                     </span>
+                    {account.id === selectedAccountId ? (
+                      <span className="import-account-option__status">Valgt</span>
+                    ) : null}
                   </button>
                 ))
               ) : (
-                <p>Opret først en konto som Budgetkonto eller Husholdning.</p>
+                <p className="import-empty-state">
+                  Ingen konti endnu. Opret for eksempel Budgetkonto eller
+                  Husholdning til venstre.
+                </p>
               )}
             </div>
           </Tile>

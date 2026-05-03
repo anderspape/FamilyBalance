@@ -26,6 +26,45 @@ type ImportAccountRow = {
   created_at: string;
 };
 
+type ImportAccountBaseRow = Pick<
+  ImportAccountRow,
+  "id" | "name" | "account_number" | "description" | "created_at"
+>;
+
+function isMissingColumnError(error: unknown, columnName: string) {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const message =
+    "message" in error && typeof error.message === "string"
+      ? error.message
+      : "";
+  const details =
+    "details" in error && typeof error.details === "string"
+      ? error.details
+      : "";
+
+  return `${message} ${details}`
+    .toLowerCase()
+    .includes(columnName.toLowerCase());
+}
+
+function mapBaseImportAccount(row: ImportAccountBaseRow): ImportAccount {
+  return {
+    id: row.id,
+    name: row.name,
+    accountNumber: row.account_number,
+    description: row.description,
+    balanceMinor: null,
+    balanceCurrency: "DKK",
+    balanceUpdatedAt: null,
+    lastImportedAt: null,
+    lastPostingDate: null,
+    createdAt: row.created_at,
+  };
+}
+
 function mapImportAccount(row: ImportAccountRow): ImportAccount {
   return {
     id: row.id,
@@ -50,6 +89,21 @@ export async function readImportAccounts(supabase: SupabaseClient, userId: strin
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .returns<ImportAccountRow[]>();
+
+  if (error && isMissingColumnError(error, "balance_minor")) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("import_accounts")
+      .select("id, name, account_number, description, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: true })
+      .returns<ImportAccountBaseRow[]>();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    return (fallbackData ?? []).map(mapBaseImportAccount);
+  }
 
   if (error) {
     throw error;
@@ -79,6 +133,27 @@ export async function createImportAccount(
       "id, name, account_number, description, balance_minor, balance_currency, balance_updated_at, last_imported_at, last_posting_date, created_at",
     )
     .single<ImportAccountRow>();
+
+  if (error && isMissingColumnError(error, "balance_minor")) {
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from("import_accounts")
+      .select("id, name, account_number, description, created_at")
+      .eq("user_id", userId)
+      .eq("name", input.name.trim())
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single<ImportAccountBaseRow>();
+
+    if (fallbackError) {
+      throw fallbackError;
+    }
+
+    if (!fallbackData) {
+      throw error;
+    }
+
+    return mapBaseImportAccount(fallbackData);
+  }
 
   if (error) {
     throw error;

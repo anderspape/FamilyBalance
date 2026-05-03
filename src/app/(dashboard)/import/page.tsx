@@ -11,9 +11,9 @@ export default function ImportPage() {
           <p className="ai-summary">
             <MagicWand size={20} />
             <span>
-              Opret en konto, vælg hvor CSV’en hører til, og drop filen. Nye
-              posteringer bliver gemt sikkert på din bruger og dubletter bliver
-              sprunget over.
+              Vælg en oprettet konto, indtast eventuelt saldo og upload CSV’en.
+              Nye posteringer bliver gemt sikkert på din bruger, og dubletter
+              bliver sprunget over.
             </span>
           </p>
         </Column>

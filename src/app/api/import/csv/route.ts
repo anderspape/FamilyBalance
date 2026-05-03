@@ -7,6 +7,22 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+function getErrorMessage(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+
+    if (typeof message === "string") {
+      return message;
+    }
+  }
+
+  return "CSV-importen fejlede. Tjek filen og prøv igen.";
+}
+
 export async function POST(request: Request) {
   const supabase = await createServerSupabaseClient();
   const {
@@ -23,7 +39,7 @@ export async function POST(request: Request) {
     const accountId = formData.get("account_id");
     const accountName = formData.get("account_name");
     const accountNumber = formData.get("account_number");
-    const balance = formData.get("balance_minor");
+    const balance = formData.get("balance") ?? formData.get("balance_minor");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "CSV-fil mangler." }, { status: 400 });
@@ -42,10 +58,15 @@ export async function POST(request: Request) {
       typeof accountNumber === "string" ? accountNumber.trim() : "";
     const selectedAccountId =
       typeof accountId === "string" ? accountId.trim() : "";
-    const balanceMinor =
-      typeof balance === "string" && balance.trim()
-        ? parseDanishAmountToMinor(balance)
-        : null;
+    const balanceText = typeof balance === "string" ? balance.trim() : "";
+    const balanceMinor = balanceText ? parseDanishAmountToMinor(balanceText) : null;
+
+    if (balanceText && balanceMinor === null) {
+      return NextResponse.json(
+        { error: "Saldo skal være et tal, fx 64.844,61." },
+        { status: 400 },
+      );
+    }
 
     const text = await file.text();
     const postings = parsePostingsCsv(text, {
@@ -64,21 +85,24 @@ export async function POST(request: Request) {
         .sort()
         .at(-1) ?? null;
 
+    let warning: string | undefined;
+
     if (selectedAccountId) {
-      await updateImportAccountAfterImport(supabase, user.id, {
-        id: selectedAccountId,
-        balanceMinor: balanceMinor ?? undefined,
-        lastPostingDate,
-      });
+      try {
+        await updateImportAccountAfterImport(supabase, user.id, {
+          id: selectedAccountId,
+          balanceMinor: balanceMinor ?? undefined,
+          lastPostingDate,
+        });
+      } catch (error) {
+        warning =
+          "Posteringerne er importeret, men kontoens saldo/metadata kunne ikke opdateres. Kør den seneste Supabase-migration.";
+        console.error("Import account metadata update failed", error);
+      }
     }
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, warning });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "CSV-importen fejlede. Tjek filen og prøv igen.";
-
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }

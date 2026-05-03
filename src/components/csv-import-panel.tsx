@@ -10,6 +10,20 @@ type ImportStatus = {
   subtitle: string;
 };
 
+async function readImportResponse(response: Response) {
+  const text = await response.text();
+
+  if (!text) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return { error: text };
+  }
+}
+
 export function CsvImportPanel({
   accountId,
   accountName,
@@ -56,7 +70,7 @@ export function CsvImportPanel({
       formData.append("account_number", accountNumber);
     }
     if (balance.trim()) {
-      formData.append("balance_minor", balance);
+      formData.append("balance", balance);
     }
 
     try {
@@ -64,16 +78,28 @@ export function CsvImportPanel({
         method: "POST",
         body: formData,
       });
-      const result = await response.json();
+      const result = await readImportResponse(response);
 
       if (!response.ok) {
-        throw new Error(result.error ?? "CSV-importen fejlede.");
+        throw new Error(
+          typeof result.error === "string"
+            ? result.error
+            : "CSV-importen fejlede.",
+        );
       }
+
+      const inserted = typeof result.inserted === "number" ? result.inserted : 0;
+      const duplicates =
+        typeof result.duplicates === "number" ? result.duplicates : 0;
+      const warning =
+        typeof result.warning === "string" && result.warning.trim()
+          ? ` ${result.warning}`
+          : "";
 
       setStatus({
         kind: "success",
         title: "CSV importeret",
-        subtitle: `${result.inserted} nye posteringer importeret, ${result.duplicates} dubletter sprunget over.${balance.trim() ? " Saldo er opdateret." : ""}`,
+        subtitle: `${inserted} nye posteringer importeret, ${duplicates} dubletter sprunget over.${balance.trim() && !warning ? " Saldo er opdateret." : ""}${warning}`,
       });
       window.dispatchEvent(new Event("familybalance:sync"));
     } catch (error) {
