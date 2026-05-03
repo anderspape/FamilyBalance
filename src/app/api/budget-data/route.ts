@@ -9,7 +9,9 @@ import {
   sectionSummaries,
 } from "@/lib/mock-data";
 import { readBankConnectionState } from "@/lib/bank-storage";
+import { readImportAccounts } from "@/lib/import-accounts";
 import { readImportedTransactions } from "@/lib/imported-transactions";
+import { formatDate, formatMinorKr } from "@/lib/money";
 import { buildDashboardDataFromPostings } from "@/lib/postings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -35,10 +37,22 @@ export async function GET() {
           await readImportedTransactions(supabase, user.id),
         )
       : null;
+  const importAccounts = supabase && user ? await readImportAccounts(supabase, user.id) : [];
+  const importAccountsWithBalance = importAccounts
+    .filter((account) => account.balanceMinor !== null)
+    .map((account) => ({
+      name: account.name,
+      balance: formatMinorKr(account.balanceMinor!),
+      note: account.lastPostingDate
+        ? `Seneste post ${formatDate(account.lastPostingDate)}`
+        : "Manuel saldo",
+    }));
   const connectedAccounts =
     bankConnection?.accounts && bankConnection.accounts.length > 0
       ? bankConnection.accounts
-      : importedDashboardData?.accounts ?? accounts;
+      : importAccountsWithBalance.length > 0
+        ? importAccountsWithBalance
+        : importedDashboardData?.accounts ?? accounts;
 
   return NextResponse.json({
     accounts: connectedAccounts,

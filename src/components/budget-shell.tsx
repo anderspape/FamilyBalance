@@ -19,6 +19,7 @@ import {
   DocumentImport,
   Finance,
   Growth,
+  List,
   Money,
   Purchase,
   Renew,
@@ -31,6 +32,7 @@ const navItems = [
   { icon: Purchase, href: "/udgifter", label: "Udgifter" },
   { icon: Growth, href: "/opsparing", label: "Opsparing" },
   { icon: DocumentImport, href: "/import", label: "Import" },
+  { icon: List, href: "/poster", label: "Poster" },
 ];
 
 export function BudgetShell({

@@ -5,6 +5,7 @@ import { Button, Column, Grid, InlineNotification, TextInput, Tile } from "@carb
 import { Add, Wallet } from "@carbon/icons-react";
 import { CsvImportPanel } from "@/components/csv-import-panel";
 import type { ImportAccount } from "@/lib/import-accounts";
+import { formatDate, formatMinorKr } from "@/lib/money";
 
 const starterAccounts = [
   {
@@ -97,10 +98,10 @@ export function CsvImportWorkspace() {
       <Column lg={5} md={8} sm={4}>
         <Tile className="panel import-accounts-panel">
           <div className="panel__header">
-            <div>
-              <p className="budget-kicker">CSV-konti</p>
-              <h2>Konti</h2>
-            </div>
+              <div>
+                <p className="budget-kicker">CSV-konti</p>
+                <h2>Konti</h2>
+              </div>
           </div>
 
           <div className="starter-account-grid">
@@ -196,6 +197,15 @@ export function CsvImportWorkspace() {
                           account.description ??
                           "CSV-import konto"}
                       </small>
+                      <small>
+                        Saldo{" "}
+                        {account.balanceMinor !== null
+                          ? formatMinorKr(account.balanceMinor)
+                          : "ikke angivet"}
+                        {account.lastPostingDate
+                          ? ` · seneste post ${formatDate(account.lastPostingDate)}`
+                          : ""}
+                      </small>
                     </span>
                   </button>
                 ))
@@ -207,6 +217,7 @@ export function CsvImportWorkspace() {
 
           {selectedAccount ? (
             <CsvImportPanel
+              accountId={selectedAccount.id}
               accountName={selectedAccount.name}
               accountNumber={selectedAccount.accountNumber}
               compact

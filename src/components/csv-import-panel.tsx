@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState, type DragEvent } from "react";
-import { Button, InlineNotification, Tile } from "@carbon/react";
+import { Button, InlineNotification, TextInput, Tile } from "@carbon/react";
 import { DocumentImport } from "@carbon/icons-react";
 
 type ImportStatus = {
@@ -11,10 +11,12 @@ type ImportStatus = {
 };
 
 export function CsvImportPanel({
+  accountId,
   accountName,
   accountNumber,
   compact = false,
 }: {
+  accountId?: string;
   accountName?: string;
   accountNumber?: string | null;
   compact?: boolean;
@@ -22,6 +24,7 @@ export function CsvImportPanel({
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [balance, setBalance] = useState("");
   const [status, setStatus] = useState<ImportStatus | null>(null);
 
   async function uploadFile(file: File) {
@@ -43,11 +46,17 @@ export function CsvImportPanel({
 
     const formData = new FormData();
     formData.append("file", file);
+    if (accountId) {
+      formData.append("account_id", accountId);
+    }
     if (accountName) {
       formData.append("account_name", accountName);
     }
     if (accountNumber) {
       formData.append("account_number", accountNumber);
+    }
+    if (balance.trim()) {
+      formData.append("balance_minor", balance);
     }
 
     try {
@@ -64,7 +73,7 @@ export function CsvImportPanel({
       setStatus({
         kind: "success",
         title: "CSV importeret",
-        subtitle: `${result.inserted} nye posteringer importeret, ${result.duplicates} dubletter sprunget over.`,
+        subtitle: `${result.inserted} nye posteringer importeret, ${result.duplicates} dubletter sprunget over.${balance.trim() ? " Saldo er opdateret." : ""}`,
       });
       window.dispatchEvent(new Event("familybalance:sync"));
     } catch (error) {
@@ -118,6 +127,14 @@ export function CsvImportPanel({
         </div>
       </div>
       <div className="csv-import-panel__actions">
+        <TextInput
+          id={`csv-import-balance-${accountId ?? "default"}`}
+          labelText="Saldo efter denne CSV"
+          onChange={(event) => setBalance(event.target.value)}
+          placeholder="Fx 64.844,61"
+          size="sm"
+          value={balance}
+        />
         <input
           accept=".csv,text/csv"
           aria-label="Vælg CSV-fil"

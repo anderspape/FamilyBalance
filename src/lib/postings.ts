@@ -26,6 +26,7 @@ const primaryAccountId = "9070 1630807898";
 
 export type ImportedPosting = {
   sourceHash: string;
+  importAccountId?: string | null;
   accountName: string;
   accountNumber: string;
   bookingDate: string;

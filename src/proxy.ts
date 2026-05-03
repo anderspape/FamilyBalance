@@ -7,6 +7,7 @@ const protectedRoutes = [
   "/udgifter",
   "/opsparing",
   "/import",
+  "/poster",
 ];
 
 function hasSupabaseEnv() {

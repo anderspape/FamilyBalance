@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { insertImportedTransactions } from "@/lib/imported-transactions";
+import { updateImportAccountAfterImport } from "@/lib/import-accounts";
+import { parseDanishAmountToMinor } from "@/lib/money";
 import { parsePostingsCsv } from "@/lib/postings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -18,8 +20,10 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const accountId = formData.get("account_id");
     const accountName = formData.get("account_name");
     const accountNumber = formData.get("account_number");
+    const balance = formData.get("balance_minor");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "CSV-fil mangler." }, { status: 400 });
@@ -36,13 +40,37 @@ export async function POST(request: Request) {
       typeof accountName === "string" ? accountName.trim() : "";
     const selectedAccountNumber =
       typeof accountNumber === "string" ? accountNumber.trim() : "";
+    const selectedAccountId =
+      typeof accountId === "string" ? accountId.trim() : "";
+    const balanceMinor =
+      typeof balance === "string" && balance.trim()
+        ? parseDanishAmountToMinor(balance)
+        : null;
 
     const text = await file.text();
     const postings = parsePostingsCsv(text, {
       accountName: selectedAccountName || undefined,
       accountNumber: selectedAccountNumber || undefined,
     });
-    const result = await insertImportedTransactions(supabase, user.id, postings);
+    const result = await insertImportedTransactions(
+      supabase,
+      user.id,
+      postings,
+      selectedAccountId || undefined,
+    );
+    const lastPostingDate =
+      postings
+        .map((posting) => posting.bookingDate)
+        .sort()
+        .at(-1) ?? null;
+
+    if (selectedAccountId) {
+      await updateImportAccountAfterImport(supabase, user.id, {
+        id: selectedAccountId,
+        balanceMinor: balanceMinor ?? undefined,
+        lastPostingDate,
+      });
+    }
 
     return NextResponse.json(result);
   } catch (error) {
