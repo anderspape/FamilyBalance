@@ -11,6 +11,8 @@ const minValue = -130000;
 const maxValue = 110000;
 const periods = ["12 mdr.", "2026", "2025"];
 
+type IncomeExpenseHistoryItem = (typeof incomeExpenseHistory)[number];
+
 function yScale(value: number) {
   const plotHeight = chartHeight - padding.top - padding.bottom;
   return (
@@ -28,21 +30,25 @@ function formatAmount(value: number) {
   return `${new Intl.NumberFormat("da-DK").format(Math.abs(value))} kr`;
 }
 
-export function IncomeExpenseChart() {
+export function IncomeExpenseChart({
+  history = incomeExpenseHistory,
+}: {
+  history?: IncomeExpenseHistoryItem[];
+}) {
   const [selectedPeriod, setSelectedPeriod] = useState(periods[0]);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
 
   const visibleHistory = useMemo(() => {
     if (selectedPeriod === "2026") {
-      return incomeExpenseHistory.filter((item) => item.year === 2026);
+      return history.filter((item) => item.year === 2026);
     }
 
     if (selectedPeriod === "2025") {
-      return incomeExpenseHistory.filter((item) => item.year === 2025);
+      return history.filter((item) => item.year === 2025);
     }
 
-    return incomeExpenseHistory;
-  }, [selectedPeriod]);
+    return history;
+  }, [history, selectedPeriod]);
 
   const chartItems = visibleHistory.map((item) => ({
     ...item,

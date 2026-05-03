@@ -47,7 +47,7 @@ Flowet er:
 Login kører via Supabase Auth med email magic link.
 
 1. Opret et Supabase-projekt.
-2. Kør SQL-migrationen i `supabase/migrations/001_familybalance_auth.sql`.
+2. Kør SQL-migrationerne i `supabase/migrations/` i rækkefølge.
 3. Udfyld disse værdier i `.env.local`:
 
 ```bash
@@ -60,6 +60,21 @@ NEXT_PUBLIC_APP_URL=http://localhost:3000
 Når Supabase-variablerne er sat, bliver `/overblik`, `/indkomst`, `/udgifter` og `/opsparing` beskyttet af login. Uden Supabase-variabler kan appen stadig køre i prototype-mode med CSV/mock fallback.
 
 Bank-state gemmes i Supabase-tabellerne `bank_connections`, `bank_accounts` og `bank_transactions`, når en bruger er logget ind.
+
+## CSV-import
+
+Overblikket har en CSV-dropzone, der understøtter samme format som `Posteringsdetaljer.csv`.
+
+- `POST /api/import/csv` modtager `multipart/form-data` med feltet `file`.
+- Poster gemmes i `imported_transactions`.
+- `source_hash` deduplikerer samme postering pr. bruger.
+- `/api/budget-data` bruger importerede poster som datakilde, når de findes.
+
+Kør også migrationen:
+
+```txt
+supabase/migrations/002_imported_transactions.sql
+```
 
 ## Render
 

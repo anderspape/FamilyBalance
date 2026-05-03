@@ -17,14 +17,17 @@ import {
 import { Account, MagicWand } from "@carbon/icons-react";
 import {
   accounts as staticAccounts,
+  incomeExpenseHistory as staticIncomeExpenseHistory,
   monthlyOverviews as staticMonthlyOverviews,
 } from "@/lib/mock-data";
 import { IncomeExpenseChart } from "@/components/income-expense-chart";
+import { CsvImportPanel } from "@/components/csv-import-panel";
 import { SpendingVisualization } from "@/components/spending-visualization";
 
 export default function OverviewPage() {
   const [overviewData, setOverviewData] = useState({
     accounts: staticAccounts,
+    incomeExpenseHistory: staticIncomeExpenseHistory,
     monthlyOverviews: staticMonthlyOverviews,
   });
   const [selectedMonthId, setSelectedMonthId] = useState(
@@ -37,6 +40,7 @@ export default function OverviewPage() {
     const data = await response.json();
     setOverviewData({
       accounts: data.accounts ?? staticAccounts,
+      incomeExpenseHistory: data.incomeExpenseHistory ?? staticIncomeExpenseHistory,
       monthlyOverviews: data.monthlyOverviews ?? staticMonthlyOverviews,
     });
     setSelectedMonthId((currentId) => {
@@ -84,6 +88,8 @@ export default function OverviewPage() {
       <Grid narrow className="budget-grid overview-layout">
         <Column lg={11} md={8} sm={4}>
           <div className="overview-main">
+            <CsvImportPanel />
+
             <section
               aria-labelledby="overview-section-title"
               className="overview-section"
@@ -154,7 +160,7 @@ export default function OverviewPage() {
             </Tile>
 
             <Tile className="panel">
-              <IncomeExpenseChart />
+              <IncomeExpenseChart history={overviewData.incomeExpenseHistory} />
             </Tile>
           </div>
         </Column>

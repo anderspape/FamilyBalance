@@ -9,6 +9,8 @@ import {
   sectionSummaries,
 } from "@/lib/mock-data";
 import { readBankConnectionState } from "@/lib/bank-storage";
+import { readImportedTransactions } from "@/lib/imported-transactions";
+import { buildDashboardDataFromPostings } from "@/lib/postings";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
@@ -27,10 +29,16 @@ export async function GET() {
     supabase && user
       ? await readBankConnectionState(supabase, user.id)
       : null;
+  const importedDashboardData =
+    supabase && user
+      ? buildDashboardDataFromPostings(
+          await readImportedTransactions(supabase, user.id),
+        )
+      : null;
   const connectedAccounts =
     bankConnection?.accounts && bankConnection.accounts.length > 0
       ? bankConnection.accounts
-      : accounts;
+      : importedDashboardData?.accounts ?? accounts;
 
   return NextResponse.json({
     accounts: connectedAccounts,
@@ -41,12 +49,13 @@ export async function GET() {
           error: bankConnection.error,
         }
       : { status: "not_connected" },
-    dashboardMetrics,
-    categorySpend,
-    incomeExpenseHistory,
-    monthlyOverviews,
-    monthlySummary,
-    sectionSummaries,
+    dashboardMetrics: importedDashboardData?.dashboardMetrics ?? dashboardMetrics,
+    categorySpend: importedDashboardData?.categorySpend ?? categorySpend,
+    incomeExpenseHistory:
+      importedDashboardData?.incomeExpenseHistory ?? incomeExpenseHistory,
+    monthlyOverviews: importedDashboardData?.monthlyOverviews ?? monthlyOverviews,
+    monthlySummary: importedDashboardData?.monthlySummary ?? monthlySummary,
+    sectionSummaries: importedDashboardData?.sectionSummaries ?? sectionSummaries,
     syncedAt: bankConnection?.syncedAt ?? new Date().toISOString(),
   });
 }
