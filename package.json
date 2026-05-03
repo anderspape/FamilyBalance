@@ -5,13 +5,22 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "import:postings": "node scripts/import-postings.mjs",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@carbon/charts": "^1.27.8",
+    "@carbon/charts-react": "^1.27.8",
+    "@carbon/icons-react": "^11.79.0",
+    "@carbon/react": "^1.106.0",
+    "@ibm/plex": "^6.4.1",
+    "@supabase/ssr": "^0.10.2",
+    "@supabase/supabase-js": "^2.105.1",
     "next": "16.2.4",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "sass": "^1.99.0"
   },
   "devDependencies": {
     "@types/node": "^20",

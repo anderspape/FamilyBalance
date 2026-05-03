@@ -1,36 +1,92 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Budget
 
-## Getting Started
+Lokal-first prototype til husstandsøkonomi bygget med Next.js, Carbon React og Supabase-klient. Første slice fokuserer på designretningen: overblik, bankstatus, transaktioner og kategoriseringsreview med mock-data.
 
-First, run the development server:
+## Stack
+
+- Next.js App Router
+- Carbon React, Carbon Icons og Carbon styles
+- Supabase JS client
+- TypeScript og Sass
+
+## Kør lokalt
+
+Den lokale Homebrew Node-installation fejler i øjeblikket på en manglende `libsimdjson.30.dylib`. Brug derfor den bundled Codex Node runtime, indtil system-Node er repareret:
+
+```bash
+/usr/bin/env PATH=/Users/andersskovpape/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin:/usr/local/opt/node/bin:/usr/bin:/bin:/usr/sbin:/sbin \
+  /Users/andersskovpape/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/bin/node \
+  /usr/local/opt/node/libexec/lib/node_modules/npm/bin/npm-cli.js run dev
+```
+
+Åbn derefter [http://localhost:3000](http://localhost:3000).
+
+Når system-Node virker igen, kan du bruge den almindelige kommando:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Bankforbindelse
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Appen har et provider-lag til bankforbindelser. GoCardless-adapteren er isoleret, men GoCardless Bank Account Data tager ikke nye signups lige nu, så den er kun klar til brug hvis du allerede har credentials.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. Opret credentials hos den valgte open-banking provider.
+2. Kopier `.env.example` til `.env.local`.
+3. Udfyld providerens secrets.
+4. Brug sandbox først, og skift derefter til en rigtig bank-institution senere.
 
-## Learn More
+Flowet er:
 
-To learn more about Next.js, take a look at the following resources:
+- `Forbind bank` opretter en requisition og sender dig til bank-consent.
+- `/api/bank/callback` gemmer connection-state på den loggede bruger i Supabase.
+- `Synkroniser nu` kalder `/api/bank/sync`, henter konti, saldi og posteringer og refresher overblikket.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## FamilyBalance login
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Login kører via Supabase Auth med email magic link.
 
-## Deploy on Vercel
+1. Opret et Supabase-projekt.
+2. Kør SQL-migrationen i `supabase/migrations/001_familybalance_auth.sql`.
+3. Udfyld disse værdier i `.env.local`:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+```bash
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Når Supabase-variablerne er sat, bliver `/overblik`, `/indkomst`, `/udgifter` og `/opsparing` beskyttet af login. Uden Supabase-variabler kan appen stadig køre i prototype-mode med CSV/mock fallback.
+
+Bank-state gemmes i Supabase-tabellerne `bank_connections`, `bank_accounts` og `bank_transactions`, når en bruger er logget ind.
+
+## Render
+
+`render.yaml` beskriver en Render web service til FamilyBalance.
+
+Render kræver, at projektet ligger i et GitHub/GitLab/Bitbucket-repo. Når repoet er pushed:
+
+1. Opret en Blueprint på Render fra repoet.
+2. Sæt `NEXT_PUBLIC_APP_URL` til Render-appens HTTPS-url.
+3. Sæt Supabase env vars i Render.
+4. Tilføj Render callback URL i Supabase Auth:
+
+```text
+https://<din-render-app>.onrender.com/auth/callback
+```
+
+Når en open-banking provider er valgt senere, sættes bank-callbacken til:
+
+```text
+https://<din-render-app>.onrender.com/api/bank/callback
+```
+
+## Verificering
+
+```bash
+npm run lint
+npm run build
+```
+
+Hvis system-Node stadig fejler, brug samme bundled Node-prefix som ovenfor.

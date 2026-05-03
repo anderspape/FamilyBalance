@@ -1,0 +1,15 @@
+export const categories = [
+  { slug: "income", name: "Indkomst" },
+  { slug: "housing", name: "Bolig" },
+  { slug: "transport", name: "Transport" },
+  { slug: "household", name: "Husholdning" },
+  { slug: "living", name: "Andre leveomkostninger" },
+  { slug: "personal", name: "Privatforbrug" },
+  { slug: "travel", name: "Ferie" },
+  { slug: "misc", name: "Diverse" },
+  { slug: "debt", name: "Lån & gæld" },
+  { slug: "savings", name: "Pension & opsparing" },
+  { slug: "transfer", name: "Kontooverførsel" },
+  { slug: "reimbursement", name: "Udlæg" },
+  { slug: "ignore", name: "Ignorer" },
+] as const;
