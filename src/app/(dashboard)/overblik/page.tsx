@@ -21,7 +21,6 @@ import {
   monthlyOverviews as staticMonthlyOverviews,
 } from "@/lib/mock-data";
 import { IncomeExpenseChart } from "@/components/income-expense-chart";
-import { CsvImportPanel } from "@/components/csv-import-panel";
 import { SpendingVisualization } from "@/components/spending-visualization";
 
 export default function OverviewPage() {
@@ -88,8 +87,6 @@ export default function OverviewPage() {
       <Grid narrow className="budget-grid overview-layout">
         <Column lg={11} md={8} sm={4}>
           <div className="overview-main">
-            <CsvImportPanel />
-
             <section
               aria-labelledby="overview-section-title"
               className="overview-section"

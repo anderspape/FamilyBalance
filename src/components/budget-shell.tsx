@@ -16,6 +16,7 @@ import {
 } from "@carbon/react";
 import {
   Dashboard,
+  DocumentImport,
   Finance,
   Growth,
   Money,
@@ -29,6 +30,7 @@ const navItems = [
   { icon: Money, href: "/indkomst", label: "Indkomst" },
   { icon: Purchase, href: "/udgifter", label: "Udgifter" },
   { icon: Growth, href: "/opsparing", label: "Opsparing" },
+  { icon: DocumentImport, href: "/import", label: "Import" },
 ];
 
 export function BudgetShell({

@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
-const protectedRoutes = ["/overblik", "/indkomst", "/udgifter", "/opsparing"];
+const protectedRoutes = [
+  "/overblik",
+  "/indkomst",
+  "/udgifter",
+  "/opsparing",
+  "/import",
+];
 
 function hasSupabaseEnv() {
   return Boolean(

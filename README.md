@@ -57,23 +57,26 @@ SUPABASE_SERVICE_ROLE_KEY=
 NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-Når Supabase-variablerne er sat, bliver `/overblik`, `/indkomst`, `/udgifter` og `/opsparing` beskyttet af login. Uden Supabase-variabler kan appen stadig køre i prototype-mode med CSV/mock fallback.
+Når Supabase-variablerne er sat, bliver `/overblik`, `/indkomst`, `/udgifter`, `/opsparing` og `/import` beskyttet af login. Uden Supabase-variabler kan appen stadig køre i prototype-mode med CSV/mock fallback.
 
 Bank-state gemmes i Supabase-tabellerne `bank_connections`, `bank_accounts` og `bank_transactions`, når en bruger er logget ind.
 
 ## CSV-import
 
-Overblikket har en CSV-dropzone, der understøtter samme format som `Posteringsdetaljer.csv`.
+Dashboardet har en dedikeret `/import`-side, hvor brugeren kan oprette CSV-konti som `Budgetkonto` og `Husholdning` og derefter droppe en CSV på den valgte konto.
 
 - `POST /api/import/csv` modtager `multipart/form-data` med feltet `file`.
+- `POST /api/import/accounts` opretter brugerens egne import-konti.
 - Poster gemmes i `imported_transactions`.
+- Import-konti gemmes i `import_accounts`.
 - `source_hash` deduplikerer samme postering pr. bruger.
 - `/api/budget-data` bruger importerede poster som datakilde, når de findes.
 
-Kør også migrationen:
+Kør også migrationerne:
 
 ```txt
 supabase/migrations/002_imported_transactions.sql
+supabase/migrations/003_import_accounts.sql
 ```
 
 ## Render

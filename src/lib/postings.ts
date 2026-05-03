@@ -42,6 +42,11 @@ export type StoredImportedPosting = ImportedPosting & {
   createdAt?: string;
 };
 
+export type PostingAccountOverride = {
+  accountName?: string;
+  accountNumber?: string;
+};
+
 type PostingRecord = StoredImportedPosting & {
   amount: number;
   date: Date;
@@ -320,7 +325,18 @@ function displayMonth(key: string) {
   return `${label[0].toUpperCase()}${label.slice(1)} ${year}`;
 }
 
-export function parsePostingsCsv(text: string) {
+export function applyPostingAccountOverride(
+  postings: ImportedPosting[],
+  account: PostingAccountOverride,
+) {
+  return postings.map((posting) => ({
+    ...posting,
+    accountName: account.accountName?.trim() || posting.accountName,
+    accountNumber: account.accountNumber?.trim() || posting.accountNumber,
+  }));
+}
+
+export function parsePostingsCsv(text: string, account?: PostingAccountOverride) {
   const rows = text
     .replace(/^\uFEFF/, "")
     .trim()
@@ -364,7 +380,7 @@ export function parsePostingsCsv(text: string) {
     throw new Error("CSV-filen matcher ikke det forventede posteringsformat.");
   }
 
-  return postings;
+  return account ? applyPostingAccountOverride(postings, account) : postings;
 }
 
 export function buildDashboardDataFromPostings(postings: StoredImportedPosting[]) {

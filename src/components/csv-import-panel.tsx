@@ -10,7 +10,15 @@ type ImportStatus = {
   subtitle: string;
 };
 
-export function CsvImportPanel() {
+export function CsvImportPanel({
+  accountName,
+  accountNumber,
+  compact = false,
+}: {
+  accountName?: string;
+  accountNumber?: string | null;
+  compact?: boolean;
+}) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -35,6 +43,12 @@ export function CsvImportPanel() {
 
     const formData = new FormData();
     formData.append("file", file);
+    if (accountName) {
+      formData.append("account_name", accountName);
+    }
+    if (accountNumber) {
+      formData.append("account_number", accountNumber);
+    }
 
     try {
       const response = await fetch("/api/import/csv", {
@@ -82,7 +96,9 @@ export function CsvImportPanel() {
 
   return (
     <Tile
-      className={`csv-import-panel${isDragging ? " csv-import-panel--dragging" : ""}`}
+      className={`csv-import-panel${compact ? " csv-import-panel--compact" : ""}${
+        isDragging ? " csv-import-panel--dragging" : ""
+      }`}
       onDragOver={(event) => {
         event.preventDefault();
         setIsDragging(true);
@@ -94,7 +110,7 @@ export function CsvImportPanel() {
         <DocumentImport size={24} />
         <div>
           <p className="budget-kicker">Importer data</p>
-          <h2>Drop din bank-CSV her</h2>
+          <h2>{accountName ? `Drop CSV til ${accountName}` : "Drop din bank-CSV her"}</h2>
           <p>
             Brug samme format som Posteringsdetaljer.csv. Importen gemmer kun nye
             posteringer.

@@ -18,6 +18,8 @@ export async function POST(request: Request) {
   try {
     const formData = await request.formData();
     const file = formData.get("file");
+    const accountName = formData.get("account_name");
+    const accountNumber = formData.get("account_number");
 
     if (!(file instanceof File)) {
       return NextResponse.json({ error: "CSV-fil mangler." }, { status: 400 });
@@ -30,8 +32,16 @@ export async function POST(request: Request) {
       );
     }
 
+    const selectedAccountName =
+      typeof accountName === "string" ? accountName.trim() : "";
+    const selectedAccountNumber =
+      typeof accountNumber === "string" ? accountNumber.trim() : "";
+
     const text = await file.text();
-    const postings = parsePostingsCsv(text);
+    const postings = parsePostingsCsv(text, {
+      accountName: selectedAccountName || undefined,
+      accountNumber: selectedAccountNumber || undefined,
+    });
     const result = await insertImportedTransactions(supabase, user.id, postings);
 
     return NextResponse.json(result);
