@@ -92,6 +92,12 @@ export async function insertImportedTransactions(
     );
 
     if (error) {
+      if (error.message?.includes("kind")) {
+        throw new Error(
+          "Supabase-tabellen mangler feltet 'kind'. Kør migrationen 004_import_schema_repair.sql og prøv igen.",
+        );
+      }
+
       throw error;
     }
   }

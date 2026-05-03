@@ -77,6 +77,7 @@ Kør også migrationerne:
 ```txt
 supabase/migrations/002_imported_transactions.sql
 supabase/migrations/003_import_accounts.sql
+supabase/migrations/004_import_schema_repair.sql
 ```
 
 ## Render
