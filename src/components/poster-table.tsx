@@ -14,11 +14,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-  TextInput,
   Tile,
 } from "@carbon/react";
 import { Save } from "@carbon/icons-react";
-import { categories } from "@/lib/categories";
+import { categoryGroups, getPostingTypeLabel } from "@/lib/categories";
 import type { ImportAccount } from "@/lib/import-accounts";
 import { formatDate, formatMinorKr } from "@/lib/money";
 
@@ -32,7 +31,11 @@ type PosterTransaction = {
   amountMinor: number;
   currency: "DKK";
   category: string;
-  kind: string;
+  categorySlug: string;
+  mainCategory: string;
+  subcategory: string;
+  postingType: string;
+  postingTypeLabel: string;
 };
 
 type PosterResponse = {
@@ -49,7 +52,13 @@ type PosterResponse = {
   };
 };
 
-const categoryNames = categories.map((category) => category.name);
+type PosterInitialFilters = {
+  accountId?: string;
+  period?: string;
+  month?: string;
+  year?: string;
+  query?: string;
+};
 
 function displayMonth(key: string) {
   const [year, month] = key.split("-").map(Number);
@@ -59,7 +68,15 @@ function displayMonth(key: string) {
   }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
+const categoryDefinitions = categoryGroups.flatMap((group) => group.categories);
+
+export function PosterTable({
+  accounts,
+  initialFilters = {},
+}: {
+  accounts: ImportAccount[];
+  initialFilters?: PosterInitialFilters;
+}) {
   const [transactions, setTransactions] = useState<PosterTransaction[]>([]);
   const [summary, setSummary] = useState<PosterResponse["summary"]>({
     count: 0,
@@ -71,11 +88,11 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
     months: [],
     years: [],
   });
-  const [accountId, setAccountId] = useState("all");
-  const [period, setPeriod] = useState("all");
-  const [month, setMonth] = useState("");
-  const [year, setYear] = useState("");
-  const [query, setQuery] = useState("");
+  const [accountId, setAccountId] = useState(initialFilters.accountId ?? "all");
+  const [period, setPeriod] = useState(initialFilters.period ?? "all");
+  const [month, setMonth] = useState(initialFilters.month ?? "");
+  const [year, setYear] = useState(initialFilters.year ?? "");
+  const [query, setQuery] = useState(initialFilters.query ?? "");
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState("");
 
@@ -107,7 +124,7 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
         Object.fromEntries(
           data.transactions.map((transaction) => [
             transaction.id,
-            transaction.category,
+            transaction.categorySlug,
           ]),
         ),
       );
@@ -125,7 +142,7 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
   async function saveCategory(transaction: PosterTransaction) {
     const nextCategory = categoryDrafts[transaction.id]?.trim();
 
-    if (!nextCategory || nextCategory === transaction.category) return;
+    if (!nextCategory || nextCategory === transaction.categorySlug) return;
 
     setSavingId(transaction.id);
 
@@ -146,7 +163,26 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
       setTransactions((currentTransactions) =>
         currentTransactions.map((currentTransaction) =>
           currentTransaction.id === transaction.id
-            ? { ...currentTransaction, category: nextCategory }
+            ? (() => {
+                const selectedCategory = categoryDefinitions.find(
+                  (category) => category.slug === nextCategory,
+                );
+
+                return {
+                  ...currentTransaction,
+                  category: selectedCategory?.name ?? currentTransaction.category,
+                  categorySlug: nextCategory,
+                  mainCategory:
+                    selectedCategory?.mainCategory ?? currentTransaction.mainCategory,
+                  subcategory: selectedCategory?.name ?? currentTransaction.subcategory,
+                  postingType:
+                    selectedCategory?.postingType ?? currentTransaction.postingType,
+                  postingTypeLabel:
+                    selectedCategory
+                      ? getPostingTypeLabel(selectedCategory.postingType)
+                      : currentTransaction.postingTypeLabel,
+                };
+              })()
             : currentTransaction,
         ),
       );
@@ -244,12 +280,6 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
             </div>
           </div>
 
-          <datalist id="poster-category-options">
-            {categoryNames.map((category) => (
-              <option key={category} value={category} />
-            ))}
-          </datalist>
-
           <div className="table-scroll poster-table-scroll" tabIndex={0}>
             <Table aria-label="Poster">
               <TableHead>
@@ -257,7 +287,9 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
                   <TableHeader>Dato</TableHeader>
                   <TableHeader>Beskrivelse</TableHeader>
                   <TableHeader>Konto</TableHeader>
-                  <TableHeader>Kategori</TableHeader>
+                  <TableHeader>Hovedkategori</TableHeader>
+                  <TableHeader>Underkategori</TableHeader>
+                  <TableHeader>Type</TableHeader>
                   <TableHeader>Beløb</TableHeader>
                 </TableRow>
               </TableHead>
@@ -267,27 +299,34 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
                     <TableCell>{formatDate(transaction.bookingDate)}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
                     <TableCell>{transaction.accountName}</TableCell>
+                    <TableCell>{transaction.mainCategory}</TableCell>
                     <TableCell>
                       <div className="poster-category-editor">
-                        <TextInput
+                        <select
+                          className="poster-category-select"
                           id={`poster-category-${transaction.id}`}
-                          labelText="Kategori"
-                          list="poster-category-options"
-                          hideLabel
                           onChange={(event) =>
                             setCategoryDrafts((currentDrafts) => ({
                               ...currentDrafts,
                               [transaction.id]: event.target.value,
                             }))
                           }
-                          onKeyDown={(event) => {
-                            if (event.key === "Enter") {
-                              void saveCategory(transaction);
-                            }
-                          }}
-                          size="sm"
-                          value={categoryDrafts[transaction.id] ?? transaction.category}
-                        />
+                          value={
+                            categoryDrafts[transaction.id] ?? transaction.categorySlug
+                          }
+                        >
+                          {categoryGroups.map((group) => (
+                            <optgroup key={group.slug} label={group.name}>
+                              {group.categories.map((category) => (
+                                <option key={category.slug} value={category.slug}>
+                                  {category.badge
+                                    ? `${category.name} [${category.badge}]`
+                                    : category.name}
+                                </option>
+                              ))}
+                            </optgroup>
+                          ))}
+                        </select>
                         <Button
                           hasIconOnly
                           iconDescription="Gem kategori"
@@ -299,6 +338,13 @@ export function PosterTable({ accounts }: { accounts: ImportAccount[] }) {
                           disabled={savingId === transaction.id}
                         />
                       </div>
+                    </TableCell>
+                    <TableCell>
+                      <span
+                        className={`posting-type-badge posting-type-badge--${transaction.postingType}`}
+                      >
+                        {transaction.postingTypeLabel}
+                      </span>
                     </TableCell>
                     <TableCell>
                       <span

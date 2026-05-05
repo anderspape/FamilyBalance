@@ -14,9 +14,13 @@ function getErrorMessage(error: unknown) {
 
   if (error && typeof error === "object" && "message" in error) {
     const message = (error as { message?: unknown }).message;
+    const details = (error as { details?: unknown }).details;
+    const hint = (error as { hint?: unknown }).hint;
 
     if (typeof message === "string") {
-      return message;
+      return [message, details, hint]
+        .filter((part): part is string => typeof part === "string" && Boolean(part))
+        .join(" ");
     }
   }
 
@@ -103,6 +107,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ...result, warning });
   } catch (error) {
+    console.error("CSV import failed", error);
     return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
   }
 }

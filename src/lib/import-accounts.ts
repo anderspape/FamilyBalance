@@ -10,6 +10,7 @@ export type ImportAccount = {
   balanceUpdatedAt: string | null;
   lastImportedAt: string | null;
   lastPostingDate: string | null;
+  closedAt: string | null;
   createdAt: string;
 };
 
@@ -23,6 +24,7 @@ type ImportAccountRow = {
   balance_updated_at: string | null;
   last_imported_at: string | null;
   last_posting_date: string | null;
+  closed_at: string | null;
   created_at: string;
 };
 
@@ -61,6 +63,7 @@ function mapBaseImportAccount(row: ImportAccountBaseRow): ImportAccount {
     balanceUpdatedAt: null,
     lastImportedAt: null,
     lastPostingDate: null,
+    closedAt: null,
     createdAt: row.created_at,
   };
 }
@@ -76,6 +79,7 @@ function mapImportAccount(row: ImportAccountRow): ImportAccount {
     balanceUpdatedAt: row.balance_updated_at,
     lastImportedAt: row.last_imported_at,
     lastPostingDate: row.last_posting_date,
+    closedAt: row.closed_at,
     createdAt: row.created_at,
   };
 }
@@ -84,13 +88,17 @@ export async function readImportAccounts(supabase: SupabaseClient, userId: strin
   const { data, error } = await supabase
     .from("import_accounts")
     .select(
-      "id, name, account_number, description, balance_minor, balance_currency, balance_updated_at, last_imported_at, last_posting_date, created_at",
+      "id, name, account_number, description, balance_minor, balance_currency, balance_updated_at, last_imported_at, last_posting_date, closed_at, created_at",
     )
     .eq("user_id", userId)
     .order("created_at", { ascending: true })
     .returns<ImportAccountRow[]>();
 
-  if (error && isMissingColumnError(error, "balance_minor")) {
+  if (
+    error &&
+    (isMissingColumnError(error, "balance_minor") ||
+      isMissingColumnError(error, "closed_at"))
+  ) {
     const { data: fallbackData, error: fallbackError } = await supabase
       .from("import_accounts")
       .select("id, name, account_number, description, created_at")
@@ -130,11 +138,15 @@ export async function createImportAccount(
       description: input.description?.trim() || null,
     })
     .select(
-      "id, name, account_number, description, balance_minor, balance_currency, balance_updated_at, last_imported_at, last_posting_date, created_at",
+      "id, name, account_number, description, balance_minor, balance_currency, balance_updated_at, last_imported_at, last_posting_date, closed_at, created_at",
     )
     .single<ImportAccountRow>();
 
-  if (error && isMissingColumnError(error, "balance_minor")) {
+  if (
+    error &&
+    (isMissingColumnError(error, "balance_minor") ||
+      isMissingColumnError(error, "closed_at"))
+  ) {
     const { data: fallbackData, error: fallbackError } = await supabase
       .from("import_accounts")
       .select("id, name, account_number, description, created_at")
@@ -160,6 +172,25 @@ export async function createImportAccount(
   }
 
   return mapImportAccount(data);
+}
+
+export async function setImportAccountClosed(
+  supabase: SupabaseClient,
+  userId: string,
+  input: {
+    id: string;
+    closed: boolean;
+  },
+) {
+  const { error } = await supabase
+    .from("import_accounts")
+    .update({ closed_at: input.closed ? new Date().toISOString() : null })
+    .eq("id", input.id)
+    .eq("user_id", userId);
+
+  if (error) {
+    throw error;
+  }
 }
 
 export async function updateImportAccountAfterImport(

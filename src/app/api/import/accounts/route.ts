@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   createImportAccount,
   readImportAccounts,
+  setImportAccountClosed,
 } from "@/lib/import-accounts";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -55,6 +56,37 @@ export async function POST(request: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Kontoen kunne ikke oprettes.";
+
+    return NextResponse.json({ error: message }, { status: 400 });
+  }
+}
+
+export async function PATCH(request: Request) {
+  const { supabase, user } = await getUser();
+
+  if (!supabase || !user) {
+    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+  }
+
+  try {
+    const body = await request.json();
+    const id = typeof body.id === "string" ? body.id.trim() : "";
+    const closed = typeof body.closed === "boolean" ? body.closed : null;
+
+    if (!id || closed === null) {
+      return NextResponse.json(
+        { error: "Konto og lukket-status mangler." },
+        { status: 400 },
+      );
+    }
+
+    await setImportAccountClosed(supabase, user.id, { id, closed });
+    const accounts = await readImportAccounts(supabase, user.id);
+
+    return NextResponse.json({ accounts });
+  } catch (error) {
+    const message =
+      error instanceof Error ? error.message : "Kontoen kunne ikke opdateres.";
 
     return NextResponse.json({ error: message }, { status: 400 });
   }

@@ -13,12 +13,18 @@ export function CsvImportWorkspace() {
   const [name, setName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [description, setDescription] = useState("");
+  const [showClosed, setShowClosed] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [updatingAccountId, setUpdatingAccountId] = useState("");
   const [error, setError] = useState("");
 
+  const visibleAccounts = useMemo(
+    () => accounts.filter((account) => (showClosed ? account.closedAt : !account.closedAt)),
+    [accounts, showClosed],
+  );
   const selectedAccount = useMemo(
-    () => accounts.find((account) => account.id === selectedAccountId) ?? null,
-    [accounts, selectedAccountId],
+    () => visibleAccounts.find((account) => account.id === selectedAccountId) ?? null,
+    [selectedAccountId, visibleAccounts],
   );
 
   useEffect(() => {
@@ -33,9 +39,11 @@ export function CsvImportWorkspace() {
 
       setAccounts(nextAccounts);
       setSelectedAccountId((currentId) =>
-        nextAccounts.some((account: ImportAccount) => account.id === currentId)
+        nextAccounts.some(
+          (account: ImportAccount) => !account.closedAt && account.id === currentId,
+        )
           ? currentId
-          : nextAccounts[0]?.id ?? "",
+          : nextAccounts.find((account: ImportAccount) => !account.closedAt)?.id ?? "",
       );
     }
 
@@ -79,6 +87,50 @@ export function CsvImportWorkspace() {
       );
     } finally {
       setIsCreating(false);
+    }
+  }
+
+  async function setAccountClosed(account: ImportAccount, closed: boolean) {
+    setUpdatingAccountId(account.id);
+    setError("");
+
+    try {
+      const response = await fetch("/api/import/accounts", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: account.id, closed }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error ?? "Kontoen kunne ikke opdateres.");
+      }
+
+      const nextAccounts = data.accounts ?? [];
+      setAccounts(nextAccounts);
+      setSelectedAccountId((currentId) => {
+        if (
+          nextAccounts.some(
+            (nextAccount: ImportAccount) =>
+              !nextAccount.closedAt && nextAccount.id === currentId,
+          )
+        ) {
+          return currentId;
+        }
+
+        return (
+          nextAccounts.find((nextAccount: ImportAccount) => !nextAccount.closedAt)?.id ??
+          ""
+        );
+      });
+    } catch (caughtError) {
+      setError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Kontoen kunne ikke opdateres.",
+      );
+    } finally {
+      setUpdatingAccountId("");
     }
   }
 
@@ -155,11 +207,27 @@ export function CsvImportWorkspace() {
                   filtrering på Poster-siden.
                 </p>
               </div>
+              <div className="import-account-view-toggle">
+                <Button
+                  kind={showClosed ? "ghost" : "tertiary"}
+                  onClick={() => setShowClosed(false)}
+                  size="sm"
+                >
+                  Vis åbne
+                </Button>
+                <Button
+                  kind={showClosed ? "tertiary" : "ghost"}
+                  onClick={() => setShowClosed(true)}
+                  size="sm"
+                >
+                  Vis lukkede
+                </Button>
+              </div>
             </div>
             <div className="import-account-options">
-              {accounts.length ? (
-                accounts.map((account) => (
-                  <button
+              {visibleAccounts.length ? (
+                visibleAccounts.map((account) => (
+                  <div
                     className={`import-account-option${
                       account.id === selectedAccountId
                         ? " import-account-option--selected"
@@ -167,7 +235,14 @@ export function CsvImportWorkspace() {
                     }`}
                     key={account.id}
                     onClick={() => setSelectedAccountId(account.id)}
-                    type="button"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        setSelectedAccountId(account.id);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
                   >
                     <Wallet size={20} />
                     <span>
@@ -187,15 +262,58 @@ export function CsvImportWorkspace() {
                           : ""}
                       </small>
                     </span>
-                    {account.id === selectedAccountId ? (
-                      <span className="import-account-option__status">Valgt</span>
-                    ) : null}
-                  </button>
+                    <span className="import-account-option__actions">
+                      {account.closedAt ? (
+                        <Button
+                          disabled={updatingAccountId === account.id}
+                          kind="ghost"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            void setAccountClosed(account, false);
+                          }}
+                          size="sm"
+                          type="button"
+                        >
+                          Genåbn
+                        </Button>
+                      ) : (
+                        <>
+                          <Button
+                            kind="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setSelectedAccountId(account.id);
+                            }}
+                            size="sm"
+                            type="button"
+                          >
+                            Importer CSV
+                          </Button>
+                          <Button
+                            disabled={updatingAccountId === account.id}
+                            kind="ghost"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void setAccountClosed(account, true);
+                            }}
+                            size="sm"
+                            type="button"
+                          >
+                            Luk konto
+                          </Button>
+                        </>
+                      )}
+                      {account.id === selectedAccountId ? (
+                        <span className="import-account-option__status">Valgt</span>
+                      ) : null}
+                    </span>
+                  </div>
                 ))
               ) : (
                 <p className="import-empty-state">
-                  Ingen konti endnu. Opret for eksempel Budgetkonto eller
-                  Husholdning til venstre.
+                  {showClosed
+                    ? "Ingen lukkede konti."
+                    : "Ingen konti endnu. Opret for eksempel Budgetkonto eller Husholdning til venstre."}
                 </p>
               )}
             </div>

@@ -1,10 +1,9 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   DataTable,
   Search,
-  Select,
-  SelectItem,
   Table,
   TableBody,
   TableCell,
@@ -12,18 +11,133 @@ import {
   TableHeader,
   TableRow,
 } from "@carbon/react";
-import { categories } from "@/lib/categories";
-import { transactionHeaders, transactions } from "@/lib/mock-data";
+import { formatDate, formatMinorKr } from "@/lib/money";
+import { transactions } from "@/lib/mock-data";
+
+type Flow = "income" | "expenses" | "savings";
+
+type PosterRow = {
+  id: string;
+  accountName: string;
+  bookingDate: string;
+  description: string;
+  mainCategory: string;
+  subcategory: string;
+  postingTypeLabel: string;
+  amountMinor: number;
+};
+
+const transactionHeaders = [
+  { key: "date", header: "Dato" },
+  { key: "text", header: "Tekst" },
+  { key: "account", header: "Konto" },
+  { key: "mainCategory", header: "Hovedkategori" },
+  { key: "subcategory", header: "Underkategori" },
+  { key: "type", header: "Type" },
+  { key: "amount", header: "Beløb" },
+];
 
 export function TransactionsTable({
   title = "Seneste poster",
   kicker = "Poster",
+  flow,
+  month,
 }: {
   title?: string;
   kicker?: string;
+  flow?: Flow;
+  month?: string;
 }) {
+  const [posterRows, setPosterRows] = useState<PosterRow[]>([]);
+  const [query, setQuery] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!flow || !month) {
+      return;
+    }
+
+    const controller = new AbortController();
+    const params = new URLSearchParams({
+      flow,
+      period: "month",
+      month,
+    });
+
+    const timeout = window.setTimeout(() => {
+      setIsLoading(true);
+      fetch(`/api/poster?${params.toString()}`, {
+        cache: "no-store",
+        signal: controller.signal,
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((data) => {
+          if (data?.transactions) {
+            setPosterRows(data.transactions);
+          }
+        })
+        .catch((error) => {
+          if (error instanceof DOMException && error.name === "AbortError") {
+            return;
+          }
+        })
+        .finally(() => setIsLoading(false));
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [flow, month]);
+
+  const rows = useMemo(() => {
+    if (!flow || !month) {
+      return transactions.map((transaction) => ({
+        id: transaction.id,
+        date: transaction.date,
+        text: transaction.merchant,
+        account: transaction.account,
+        mainCategory: transaction.category,
+        subcategory: transaction.category,
+        type: "Forbrug",
+        amount: transaction.amount,
+      }));
+    }
+
+    const lowerQuery = query.trim().toLowerCase();
+
+    return posterRows
+      .filter((posting) => {
+        if (!lowerQuery) return true;
+
+        return [
+          posting.bookingDate,
+          posting.description,
+          posting.accountName,
+          posting.mainCategory,
+          posting.subcategory,
+          posting.postingTypeLabel,
+          formatMinorKr(posting.amountMinor),
+        ]
+          .join(" ")
+          .toLowerCase()
+          .includes(lowerQuery);
+      })
+      .slice(0, 50)
+      .map((posting) => ({
+        id: posting.id,
+        date: formatDate(posting.bookingDate),
+        text: posting.description,
+        account: posting.accountName,
+        mainCategory: posting.mainCategory,
+        subcategory: posting.subcategory,
+        type: posting.postingTypeLabel,
+        amount: formatMinorKr(posting.amountMinor),
+      }));
+  }, [flow, month, posterRows, query]);
+
   return (
-    <DataTable rows={transactions} headers={transactionHeaders}>
+    <DataTable rows={rows} headers={transactionHeaders}>
       {({ rows, headers, getHeaderProps, getRowProps, getTableProps }) => (
         <div className="table-panel">
           <div className="panel__header table-panel__header">
@@ -35,24 +149,11 @@ export function TransactionsTable({
               <Search
                 id={`${kicker}-transaction-search`}
                 labelText="Søg i poster"
+                onChange={(event) => setQuery(event.target.value)}
                 placeholder="Søg modpart eller tekst"
                 size="sm"
+                value={query}
               />
-              <Select
-                id={`${kicker}-category-filter`}
-                labelText="Kategori"
-                size="sm"
-                defaultValue="all"
-              >
-                <SelectItem value="all" text="Alle kategorier" />
-                {categories.map((category) => (
-                  <SelectItem
-                    key={category.slug}
-                    value={category.slug}
-                    text={category.name}
-                  />
-                ))}
-              </Select>
             </div>
           </div>
           <div className="table-scroll" tabIndex={0}>
@@ -71,17 +172,29 @@ export function TransactionsTable({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {rows.map((row) => {
-                  const { key, ...rowProps } = getRowProps({ row });
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={headers.length}>Henter poster...</TableCell>
+                  </TableRow>
+                ) : rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={headers.length}>
+                      Ingen poster i den valgte måned.
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  rows.map((row) => {
+                    const { key, ...rowProps } = getRowProps({ row });
 
-                  return (
-                    <TableRow key={key} {...rowProps}>
-                      {row.cells.map((cell) => (
-                        <TableCell key={cell.id}>{cell.value}</TableCell>
-                      ))}
-                    </TableRow>
-                  );
-                })}
+                    return (
+                      <TableRow key={key} {...rowProps}>
+                        {row.cells.map((cell) => (
+                          <TableCell key={cell.id}>{cell.value}</TableCell>
+                        ))}
+                      </TableRow>
+                    );
+                  })
+                )}
               </TableBody>
             </Table>
           </div>

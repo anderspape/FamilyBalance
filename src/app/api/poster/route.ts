@@ -3,6 +3,11 @@ import {
   readPosterTransactions,
   updateImportedTransactionCategory,
 } from "@/lib/imported-transactions";
+import {
+  getPostingTypeLabel,
+  isVisibleSpendingType,
+  resolveCategory,
+} from "@/lib/categories";
 import { formatMinorKr } from "@/lib/money";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
@@ -51,9 +56,13 @@ function matchesPeriod(
 }
 
 function searchText(posting: Awaited<ReturnType<typeof readPosterTransactions>>[number]) {
+  const category = resolveCategory(posting.category);
+
   return [
     posting.description,
-    posting.category,
+    category.mainCategory,
+    category.name,
+    getPostingTypeLabel(category.postingType),
     posting.accountName,
     posting.accountNumber,
     formatMinorKr(posting.amountMinor),
@@ -75,8 +84,10 @@ export async function GET(request: Request) {
   const month = url.searchParams.get("month");
   const year = url.searchParams.get("year");
   const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
+  const flow = url.searchParams.get("flow");
   const allPostings = await readPosterTransactions(supabase, user.id);
   const filteredPostings = allPostings.filter((posting) => {
+    const category = resolveCategory(posting.category);
     const accountMatches =
       !accountId ||
       accountId === "all" ||
@@ -84,8 +95,18 @@ export async function GET(request: Request) {
       posting.accountNumber === accountId;
     const periodMatches = matchesPeriod(posting.bookingDate, period, month, year);
     const queryMatches = !query || searchText(posting).includes(query);
+    const flowMatches =
+      !flow ||
+      flow === "all" ||
+      (flow === "income" && category.postingType === "income") ||
+      (flow === "expenses" &&
+        posting.amountMinor < 0 &&
+        isVisibleSpendingType(category.postingType)) ||
+      (flow === "savings" &&
+        posting.amountMinor < 0 &&
+        category.mainCategory === "Pension & Opsparing");
 
-    return accountMatches && periodMatches && queryMatches;
+    return accountMatches && periodMatches && queryMatches && flowMatches;
   });
   const totalMinor = filteredPostings.reduce(
     (total, posting) => total + posting.amountMinor,
@@ -93,18 +114,27 @@ export async function GET(request: Request) {
   );
 
   return NextResponse.json({
-    transactions: filteredPostings.map((posting) => ({
-      id: posting.id,
-      importAccountId: posting.importAccountId ?? null,
-      accountName: posting.accountName,
-      accountNumber: posting.accountNumber,
-      bookingDate: posting.bookingDate,
-      description: posting.description,
-      amountMinor: posting.amountMinor,
-      currency: posting.currency,
-      category: posting.category,
-      kind: posting.kind,
-    })),
+    transactions: filteredPostings.map((posting) => {
+      const category = resolveCategory(posting.category);
+
+      return {
+        id: posting.id,
+        importAccountId: posting.importAccountId ?? null,
+        accountName: posting.accountName,
+        accountNumber: posting.accountNumber,
+        bookingDate: posting.bookingDate,
+        description: posting.description,
+        amountMinor: posting.amountMinor,
+        currency: posting.currency,
+        category: category.name,
+        categorySlug: category.slug,
+        mainCategory: category.mainCategory,
+        subcategory: category.name,
+        kind: category.postingType,
+        postingType: category.postingType,
+        postingTypeLabel: getPostingTypeLabel(category.postingType),
+      };
+    }),
     summary: {
       count: filteredPostings.length,
       totalMinor,
@@ -112,7 +142,7 @@ export async function GET(request: Request) {
         ? Math.round(totalMinor / filteredPostings.length)
         : 0,
       uncategorizedCount: filteredPostings.filter(
-        (posting) => !posting.category || posting.category === "Andet",
+        (posting) => resolveCategory(posting.category).postingType === "uncategorized",
       ).length,
     },
     options: {

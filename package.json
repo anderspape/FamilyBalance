@@ -6,6 +6,8 @@
     "dev": "next dev",
     "build": "next build --webpack",
     "import:postings": "node scripts/import-postings.mjs",
+    "reset:imports": "node scripts/reset-import-data.mjs",
+    "test:taxonomy": "node scripts/verify-taxonomy.mjs",
     "start": "next start",
     "lint": "eslint"
   },

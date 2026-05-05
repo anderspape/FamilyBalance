@@ -3,12 +3,25 @@ import { PosterTable } from "@/components/poster-table";
 import { readImportAccounts } from "@/lib/import-accounts";
 import { createServerSupabaseClient } from "@/lib/supabase-server";
 
-export default async function PosterPage() {
+type PosterPageSearchParams = {
+  accountId?: string;
+  period?: string;
+  month?: string;
+  year?: string;
+  q?: string;
+};
+
+export default async function PosterPage({
+  searchParams,
+}: {
+  searchParams?: Promise<PosterPageSearchParams>;
+}) {
   const supabase = await createServerSupabaseClient();
   const {
     data: { user },
   } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
   const accounts = supabase && user ? await readImportAccounts(supabase, user.id) : [];
+  const params = (await searchParams) ?? {};
 
   return (
     <>
@@ -23,7 +36,16 @@ export default async function PosterPage() {
         </Column>
       </Grid>
 
-      <PosterTable accounts={accounts} />
+      <PosterTable
+        accounts={accounts}
+        initialFilters={{
+          accountId: params.accountId,
+          month: params.month,
+          period: params.period,
+          query: params.q,
+          year: params.year,
+        }}
+      />
     </>
   );
 }
