@@ -192,7 +192,9 @@ export const categories = categoryGroups.map((item) => ({
 
 export const categoryOptions = categoryDefinitions.map((item) => ({
   value: item.slug,
-  label: item.badge ? `${item.name} [${item.badge}]` : item.name,
+  label: item.badge
+    ? `${item.name} [${item.badge === "Regn" ? "Regning" : "Indkomst"}]`
+    : item.name,
   group: item.mainCategory,
   postingType: item.postingType,
 }));
@@ -242,9 +244,9 @@ export function resolveCategory(
 export function getPostingTypeLabel(postingType: PostingType) {
   switch (postingType) {
     case "income":
-      return "Ind";
+      return "Indkomst";
     case "bill":
-      return "Regn";
+      return "Regning";
     case "savings":
       return "Opsparing";
     case "transfer":

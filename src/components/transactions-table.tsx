@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type UIEvent } from "react";
 import {
   DataTable,
   Search,
@@ -32,6 +32,16 @@ type PosterRow = {
   amountMinor: number;
 };
 
+type TransactionSortKey =
+  | "date"
+  | "text"
+  | "account"
+  | "mainCategory"
+  | "subcategory"
+  | "type"
+  | "amount";
+type SortDirection = "asc" | "desc";
+
 const transactionHeaders = [
   { key: "date", header: "Dato" },
   { key: "text", header: "Tekst" },
@@ -43,6 +53,7 @@ const transactionHeaders = [
 ];
 
 const posterCacheAgeMs = 60_000;
+const pageSize = 50;
 
 export function TransactionsTable({
   title = "Seneste poster",
@@ -58,6 +69,9 @@ export function TransactionsTable({
   const [posterRows, setPosterRows] = useState<PosterRow[]>([]);
   const [query, setQuery] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [sortKey, setSortKey] = useState<TransactionSortKey>("date");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [visibleCount, setVisibleCount] = useState(pageSize);
 
   useEffect(() => {
     if (!flow || !month) {
@@ -119,17 +133,42 @@ export function TransactionsTable({
     };
   }, [flow, month]);
 
-  const rows = useMemo(() => {
+  function toggleSort(nextSortKey: TransactionSortKey) {
+    setVisibleCount(pageSize);
+    if (sortKey === nextSortKey) {
+      setSortDirection((currentDirection) =>
+        currentDirection === "asc" ? "desc" : "asc",
+      );
+      return;
+    }
+
+    setSortKey(nextSortKey);
+    setSortDirection(nextSortKey === "amount" ? "desc" : "asc");
+  }
+
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    const distanceToBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+
+    if (distanceToBottom < 160) {
+      setVisibleCount((currentCount) => currentCount + pageSize);
+    }
+  }
+
+  const filteredRows = useMemo(() => {
     if (!flow || !month) {
       return transactions.map((transaction) => ({
         id: transaction.id,
         date: transaction.date,
+        bookingDate: transaction.date,
         text: transaction.merchant,
         account: transaction.account,
         mainCategory: transaction.category,
         subcategory: transaction.category,
         type: "Forbrug",
         amount: transaction.amount,
+        amountMinor: 0,
       }));
     }
 
@@ -152,18 +191,41 @@ export function TransactionsTable({
           .toLowerCase()
           .includes(lowerQuery);
       })
-      .slice(0, 50)
       .map((posting) => ({
         id: posting.id,
         date: formatDate(posting.bookingDate),
+        bookingDate: posting.bookingDate,
         text: posting.description,
         account: posting.accountName,
         mainCategory: posting.mainCategory,
         subcategory: posting.subcategory,
         type: posting.postingTypeLabel,
         amount: formatMinorKr(posting.amountMinor),
+        amountMinor: posting.amountMinor,
       }));
   }, [flow, month, posterRows, query]);
+
+  const sortedRows = useMemo(() => {
+    return [...filteredRows].sort((a, b) => {
+      const direction = sortDirection === "asc" ? 1 : -1;
+
+      if (sortKey === "amount") {
+        return (a.amountMinor - b.amountMinor) * direction;
+      }
+
+      if (sortKey === "date") {
+        return a.bookingDate.localeCompare(b.bookingDate) * direction;
+      }
+
+      return String(a[sortKey]).localeCompare(String(b[sortKey]), "da-DK") * direction;
+    });
+  }, [filteredRows, sortDirection, sortKey]);
+
+  const rows = useMemo(
+    () => sortedRows.slice(0, visibleCount),
+    [sortedRows, visibleCount],
+  );
+  const hasMoreRows = rows.length < sortedRows.length;
 
   return (
     <DataTable rows={rows} headers={transactionHeaders}>
@@ -172,29 +234,49 @@ export function TransactionsTable({
           <div className="panel__header table-panel__header">
             <div>
               <p className="budget-kicker">{kicker}</p>
-              <h2>{title}</h2>
+              <h2>
+                {title}
+                <span className="table-panel__count">
+                  {sortedRows.length} poster
+                </span>
+              </h2>
             </div>
             <div className="table-panel__tools">
               <Search
                 id={`${kicker}-transaction-search`}
                 labelText="Søg i poster"
-                onChange={(event) => setQuery(event.target.value)}
+                onChange={(event) => {
+                  setVisibleCount(pageSize);
+                  setQuery(event.target.value);
+                }}
                 placeholder="Søg modpart eller tekst"
                 size="sm"
                 value={query}
               />
             </div>
           </div>
-          <div className="table-scroll" tabIndex={0}>
+          <div className="table-scroll" onScroll={handleScroll} tabIndex={0}>
             <Table {...getTableProps()}>
               <TableHead>
                 <TableRow>
                   {headers.map((header) => {
                     const { key, ...headerProps } = getHeaderProps({ header });
+                    const headerKey = header.key as TransactionSortKey;
 
                     return (
                       <TableHeader key={key} {...headerProps}>
-                        {header.header}
+                        <button
+                          className="sortable-header"
+                          onClick={() => toggleSort(headerKey)}
+                          type="button"
+                        >
+                          <span>{header.header}</span>
+                          {sortKey === headerKey ? (
+                            <span aria-hidden="true">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          ) : null}
+                        </button>
                       </TableHeader>
                     );
                   })}
@@ -226,6 +308,15 @@ export function TransactionsTable({
                 )}
               </TableBody>
             </Table>
+            {hasMoreRows ? (
+              <button
+                className="table-load-more"
+                onClick={() => setVisibleCount((currentCount) => currentCount + pageSize)}
+                type="button"
+              >
+                Vis flere poster
+              </button>
+            ) : null}
           </div>
         </div>
       )}

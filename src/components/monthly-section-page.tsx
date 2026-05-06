@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Column, Grid, Select, SelectItem, Tag, Tile } from "@carbon/react";
+import { Column, Grid, Select, SelectItem, Tile } from "@carbon/react";
 import { CategoryBars } from "@/components/category-bars";
+import { SpendingVisualization } from "@/components/spending-visualization";
 import { TransactionsTable } from "@/components/transactions-table";
 import {
   clearClientCache,
@@ -19,6 +20,7 @@ type SectionId = "income" | "expenses";
 
 type MonthlyOverview = (typeof staticMonthlyOverviews)[number] & {
   incomeSources?: typeof staticIncomeSources;
+  spendingTotal?: string;
 };
 
 type SectionCopy = {
@@ -153,10 +155,9 @@ export function MonthlySectionPage({ sectionId }: { sectionId: SectionId }) {
               <h2>{copy.totalTitle}</h2>
             </div>
             <strong>{summary?.value ?? "0 kr."}</strong>
-            <p className="summary-pill">
+            <p className={`summary-pill summary-pill--${summary?.type ?? "blue"}`}>
               {summary?.detail ?? "Ingen CSV-data endnu"}
             </p>
-            {summary ? <Tag type={summary.type}>{summary.tag}</Tag> : null}
           </Tile>
         </Column>
         <Column lg={11} md={8} sm={4}>
@@ -189,10 +190,15 @@ export function MonthlySectionPage({ sectionId }: { sectionId: SectionId }) {
                 Importer en CSV for at se data for denne side.
               </div>
             ) : (
-              <CategoryBars
-                items={items}
-                tone={sectionId === "income" ? "income" : "expense"}
-              />
+              sectionId === "expenses" ? (
+                <SpendingVisualization
+                  items={items}
+                  monthLabel={selectedOverview.label}
+                  totalAmount={selectedOverview.spendingTotal ?? summary?.value ?? "0 kr."}
+                />
+              ) : (
+                <CategoryBars items={items} tone="income" />
+              )
             )}
           </Tile>
         </Column>

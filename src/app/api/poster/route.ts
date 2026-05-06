@@ -49,6 +49,14 @@ function matchesPeriod(
     return monthKey(bookingDate) === currentMonth;
   }
 
+  if (period === "last-3-months" || period === "last-12-months") {
+    const monthsBack = period === "last-3-months" ? 2 : 11;
+    const start = new Date(Date.UTC(now.getFullYear(), now.getMonth() - monthsBack, 1));
+    const booking = new Date(`${bookingDate}T00:00:00.000Z`);
+
+    return booking >= start;
+  }
+
   if (period === "month" && month) {
     return monthKey(bookingDate) === month;
   }
@@ -76,6 +84,56 @@ function searchText(posting: Awaited<ReturnType<typeof readPosterTransactions>>[
     .toLowerCase();
 }
 
+function isLikelyInternalTransfer(text: string) {
+  const lower = text.toLowerCase();
+  const transferText =
+    /^overførsel\b/i.test(text.trim()) ||
+    /^overfoersel\b/i.test(text.trim()) ||
+    [
+      "overførsel konto",
+      "overfoersel konto",
+      "konto 9070",
+      "overført til",
+      "overfort til",
+      "til husholdningskonto",
+      "til budgetkonto",
+      "til opsparingskonto",
+    ].some((word) => lower.includes(word));
+  const incomeText = [
+    "løn",
+    "loen",
+    "månedsløn",
+    "maanedsloen",
+    "lønoverførsel",
+    "loenoverfoersel",
+    "skat",
+    "børne",
+    "boerne",
+    "ungeydelse",
+    "refusion",
+    "rente",
+    "udbytte",
+    "afkast",
+    "gave",
+  ].some((word) => lower.includes(word));
+
+  return transferText && !incomeText;
+}
+
+function normalizedCategory(posting: Awaited<ReturnType<typeof readPosterTransactions>>[number]) {
+  const savedCategory = resolveCategory(posting.category);
+
+  if (
+    posting.amountMinor > 0 &&
+    savedCategory.postingType === "income" &&
+    isLikelyInternalTransfer(posting.description)
+  ) {
+    return resolveCategory("Kontooverførsel", "transfer");
+  }
+
+  return savedCategory;
+}
+
 export async function GET(request: Request) {
   const { supabase, user } = await getUser();
 
@@ -93,9 +151,11 @@ export async function GET(request: Request) {
   const year = url.searchParams.get("year");
   const query = (url.searchParams.get("q") ?? "").trim().toLowerCase();
   const flow = url.searchParams.get("flow");
+  const mainCategory = url.searchParams.get("mainCategory");
+  const categorySlug = url.searchParams.get("category");
   const allPostings = await readPosterTransactions(supabase, user.id);
   const filteredPostings = allPostings.filter((posting) => {
-    const category = resolveCategory(posting.category);
+    const category = normalizedCategory(posting);
     const accountMatches =
       !accountId ||
       accountId === "all" ||
@@ -103,10 +163,19 @@ export async function GET(request: Request) {
       posting.accountNumber === accountId;
     const periodMatches = matchesPeriod(posting.bookingDate, period, month, year);
     const queryMatches = !query || searchText(posting).includes(query);
+    const categoryMatches =
+      !categorySlug ||
+      categorySlug === "all" ||
+      category.slug === categorySlug ||
+      category.mainCategory === categorySlug;
+    const mainCategoryMatches =
+      !mainCategory || mainCategory === "all" || category.mainCategory === mainCategory;
     const flowMatches =
       !flow ||
       flow === "all" ||
-      (flow === "income" && category.postingType === "income") ||
+      (flow === "income" &&
+        posting.amountMinor > 0 &&
+        category.postingType === "income") ||
       (flow === "expenses" &&
         posting.amountMinor < 0 &&
         isVisibleSpendingType(category.postingType)) ||
@@ -114,7 +183,14 @@ export async function GET(request: Request) {
         posting.amountMinor < 0 &&
         category.mainCategory === "Pension & Opsparing");
 
-    return accountMatches && periodMatches && queryMatches && flowMatches;
+    return (
+      accountMatches &&
+      periodMatches &&
+      queryMatches &&
+      categoryMatches &&
+      mainCategoryMatches &&
+      flowMatches
+    );
   });
   const totalMinor = filteredPostings.reduce(
     (total, posting) => total + posting.amountMinor,
@@ -124,7 +200,7 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       transactions: filteredPostings.map((posting) => {
-        const category = resolveCategory(posting.category);
+        const category = normalizedCategory(posting);
 
         return {
           id: posting.id,

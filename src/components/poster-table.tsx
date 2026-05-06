@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type UIEvent } from "react";
 import {
   Button,
   Column,
@@ -63,7 +63,18 @@ type PosterInitialFilters = {
   month?: string;
   year?: string;
   query?: string;
+  category?: string;
 };
+
+type PosterSortKey =
+  | "bookingDate"
+  | "description"
+  | "accountName"
+  | "mainCategory"
+  | "subcategory"
+  | "postingTypeLabel"
+  | "amountMinor";
+type SortDirection = "asc" | "desc";
 
 function displayMonth(key: string) {
   const [year, month] = key.split("-").map(Number);
@@ -75,6 +86,7 @@ function displayMonth(key: string) {
 
 const categoryDefinitions = categoryGroups.flatMap((group) => group.categories);
 const posterCacheAgeMs = 60_000;
+const pageSize = 50;
 
 export function PosterTable({
   accounts,
@@ -99,8 +111,14 @@ export function PosterTable({
   const [month, setMonth] = useState(initialFilters.month ?? "");
   const [year, setYear] = useState(initialFilters.year ?? "");
   const [query, setQuery] = useState(initialFilters.query ?? "");
+  const [categoryFilter, setCategoryFilter] = useState(
+    initialFilters.category ?? "all",
+  );
   const [categoryDrafts, setCategoryDrafts] = useState<Record<string, string>>({});
   const [savingId, setSavingId] = useState("");
+  const [sortKey, setSortKey] = useState<PosterSortKey>("bookingDate");
+  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [visibleCount, setVisibleCount] = useState(pageSize);
 
   const searchParams = useMemo(() => {
     const params = new URLSearchParams();
@@ -109,9 +127,10 @@ export function PosterTable({
     if (month) params.set("month", month);
     if (year) params.set("year", year);
     if (query.trim()) params.set("q", query.trim());
+    if (categoryFilter !== "all") params.set("category", categoryFilter);
 
     return params;
-  }, [accountId, month, period, query, year]);
+  }, [accountId, categoryFilter, month, period, query, year]);
 
   useEffect(() => {
     let isMounted = true;
@@ -182,6 +201,47 @@ export function PosterTable({
     };
   }, [query, searchParams]);
 
+  function toggleSort(nextSortKey: PosterSortKey) {
+    setVisibleCount(pageSize);
+    if (sortKey === nextSortKey) {
+      setSortDirection((currentDirection) =>
+        currentDirection === "asc" ? "desc" : "asc",
+      );
+      return;
+    }
+
+    setSortKey(nextSortKey);
+    setSortDirection(nextSortKey === "amountMinor" ? "desc" : "asc");
+  }
+
+  function handleScroll(event: UIEvent<HTMLDivElement>) {
+    const element = event.currentTarget;
+    const distanceToBottom =
+      element.scrollHeight - element.scrollTop - element.clientHeight;
+
+    if (distanceToBottom < 160) {
+      setVisibleCount((currentCount) => currentCount + pageSize);
+    }
+  }
+
+  const sortedTransactions = useMemo(() => {
+    return [...transactions].sort((a, b) => {
+      const direction = sortDirection === "asc" ? 1 : -1;
+
+      if (sortKey === "amountMinor") {
+        return (a.amountMinor - b.amountMinor) * direction;
+      }
+
+      return String(a[sortKey]).localeCompare(String(b[sortKey]), "da-DK") * direction;
+    });
+  }, [sortDirection, sortKey, transactions]);
+
+  const visibleTransactions = useMemo(
+    () => sortedTransactions.slice(0, visibleCount),
+    [sortedTransactions, visibleCount],
+  );
+  const hasMoreTransactions = visibleTransactions.length < sortedTransactions.length;
+
   async function saveCategory(transaction: PosterTransaction) {
     const nextCategory = categoryDrafts[transaction.id]?.trim();
 
@@ -244,7 +304,10 @@ export function PosterTable({
             <Select
               id="poster-account"
               labelText="Konto"
-              onChange={(event) => setAccountId(event.target.value)}
+              onChange={(event) => {
+                setVisibleCount(pageSize);
+                setAccountId(event.target.value);
+              }}
               size="sm"
               value={accountId}
             >
@@ -256,20 +319,56 @@ export function PosterTable({
             <Select
               id="poster-period"
               labelText="Periode"
-              onChange={(event) => setPeriod(event.target.value)}
+              onChange={(event) => {
+                setVisibleCount(pageSize);
+                setPeriod(event.target.value);
+              }}
               size="sm"
               value={period}
             >
               <SelectItem text="Hele perioden" value="all" />
               <SelectItem text="Denne måned" value="current-month" />
+              <SelectItem text="Sidste 3 mdr." value="last-3-months" />
+              <SelectItem text="Sidste 12 mdr." value="last-12-months" />
               <SelectItem text="Valgt måned" value="month" />
               <SelectItem text="År" value="year" />
+            </Select>
+            <Select
+              id="poster-category-filter"
+              labelText="Kategori"
+              onChange={(event) => {
+                setVisibleCount(pageSize);
+                setCategoryFilter(event.target.value);
+              }}
+              size="sm"
+              value={categoryFilter}
+            >
+              <SelectItem text="Alle kategorier" value="all" />
+              {categoryGroups.map((group) => (
+                <SelectItem
+                  key={group.name}
+                  text={group.name}
+                  value={group.name}
+                />
+              ))}
+              {categoryGroups.flatMap((group) =>
+                group.categories.map((category) => (
+                  <SelectItem
+                    key={category.slug}
+                    text={`${group.name} / ${category.name}`}
+                    value={category.slug}
+                  />
+                )),
+              )}
             </Select>
             {period === "month" ? (
               <Select
                 id="poster-month"
                 labelText="Måned"
-                onChange={(event) => setMonth(event.target.value)}
+                onChange={(event) => {
+                  setVisibleCount(pageSize);
+                  setMonth(event.target.value);
+                }}
                 size="sm"
                 value={month}
               >
@@ -286,7 +385,10 @@ export function PosterTable({
               <Select
                 id="poster-year"
                 labelText="År"
-                onChange={(event) => setYear(event.target.value)}
+                onChange={(event) => {
+                  setVisibleCount(pageSize);
+                  setYear(event.target.value);
+                }}
                 size="sm"
                 value={year}
               >
@@ -298,7 +400,10 @@ export function PosterTable({
             <Search
               id="poster-search"
               labelText="Søg"
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setVisibleCount(pageSize);
+                setQuery(event.target.value);
+              }}
               placeholder="Søg i poster"
               size="sm"
               value={query}
@@ -324,21 +429,46 @@ export function PosterTable({
             </div>
           </div>
 
-          <div className="table-scroll poster-table-scroll" tabIndex={0}>
+          <div
+            className="table-scroll poster-table-scroll"
+            onScroll={handleScroll}
+            tabIndex={0}
+          >
             <Table aria-label="Poster">
               <TableHead>
                 <TableRow>
-                  <TableHeader>Dato</TableHeader>
-                  <TableHeader>Beskrivelse</TableHeader>
-                  <TableHeader>Konto</TableHeader>
-                  <TableHeader>Hovedkategori</TableHeader>
-                  <TableHeader>Underkategori</TableHeader>
-                  <TableHeader>Type</TableHeader>
-                  <TableHeader>Beløb</TableHeader>
+                  {[
+                    ["bookingDate", "Dato"],
+                    ["description", "Beskrivelse"],
+                    ["accountName", "Konto"],
+                    ["mainCategory", "Hovedkategori"],
+                    ["subcategory", "Underkategori"],
+                    ["postingTypeLabel", "Type"],
+                    ["amountMinor", "Beløb"],
+                  ].map(([key, label]) => {
+                    const headerKey = key as PosterSortKey;
+
+                    return (
+                      <TableHeader key={key}>
+                        <button
+                          className="sortable-header"
+                          onClick={() => toggleSort(headerKey)}
+                          type="button"
+                        >
+                          <span>{label}</span>
+                          {sortKey === headerKey ? (
+                            <span aria-hidden="true">
+                              {sortDirection === "asc" ? "↑" : "↓"}
+                            </span>
+                          ) : null}
+                        </button>
+                      </TableHeader>
+                    );
+                  })}
                 </TableRow>
               </TableHead>
               <TableBody>
-                {transactions.map((transaction) => (
+                {visibleTransactions.map((transaction) => (
                   <TableRow key={transaction.id}>
                     <TableCell>{formatDate(transaction.bookingDate)}</TableCell>
                     <TableCell>{transaction.description}</TableCell>
@@ -364,7 +494,11 @@ export function PosterTable({
                               {group.categories.map((category) => (
                                 <option key={category.slug} value={category.slug}>
                                   {category.badge
-                                    ? `${category.name} [${category.badge}]`
+                                    ? `${category.name} [${
+                                        category.badge === "Regn"
+                                          ? "Regning"
+                                          : "Indkomst"
+                                      }]`
                                     : category.name}
                                 </option>
                               ))}
@@ -405,6 +539,17 @@ export function PosterTable({
                 ))}
               </TableBody>
             </Table>
+            {hasMoreTransactions ? (
+              <button
+                className="table-load-more"
+                onClick={() =>
+                  setVisibleCount((currentCount) => currentCount + pageSize)
+                }
+                type="button"
+              >
+                Vis flere poster
+              </button>
+            ) : null}
           </div>
         </Tile>
       </Column>

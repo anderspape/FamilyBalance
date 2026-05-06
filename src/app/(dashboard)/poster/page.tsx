@@ -9,6 +9,7 @@ type PosterPageSearchParams = {
   month?: string;
   year?: string;
   q?: string;
+  category?: string;
 };
 
 export default async function PosterPage({
@@ -40,6 +41,7 @@ export default async function PosterPage({
         accounts={accounts}
         initialFilters={{
           accountId: params.accountId,
+          category: params.category,
           month: params.month,
           period: params.period,
           query: params.q,

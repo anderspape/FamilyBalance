@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Button, Column, Grid, InlineNotification, TextInput, Tile } from "@carbon/react";
+import {
+  Button,
+  Column,
+  Grid,
+  InlineNotification,
+  Modal,
+  TextInput,
+  Tile,
+} from "@carbon/react";
 import { Add, Wallet } from "@carbon/icons-react";
 import { CsvImportPanel } from "@/components/csv-import-panel";
 import { clearClientCache } from "@/lib/client-cache";
@@ -14,18 +22,15 @@ export function CsvImportWorkspace() {
   const [name, setName] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
   const [description, setDescription] = useState("");
-  const [showClosed, setShowClosed] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [importAccount, setImportAccount] = useState<ImportAccount | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [updatingAccountId, setUpdatingAccountId] = useState("");
   const [error, setError] = useState("");
 
   const visibleAccounts = useMemo(
-    () => accounts.filter((account) => (showClosed ? account.closedAt : !account.closedAt)),
-    [accounts, showClosed],
-  );
-  const selectedAccount = useMemo(
-    () => visibleAccounts.find((account) => account.id === selectedAccountId) ?? null,
-    [selectedAccountId, visibleAccounts],
+    () => accounts.filter((account) => !account.closedAt),
+    [accounts],
   );
 
   useEffect(() => {
@@ -81,6 +86,7 @@ export function CsvImportWorkspace() {
       setName("");
       setAccountNumber("");
       setDescription("");
+      setIsCreateModalOpen(false);
     } catch (caughtError) {
       setError(
         caughtError instanceof Error
@@ -138,68 +144,9 @@ export function CsvImportWorkspace() {
   }
 
   return (
-    <Grid narrow className="budget-grid import-layout">
-      <Column lg={5} md={8} sm={4}>
-        <Tile className="panel import-accounts-panel">
-          <div className="panel__header">
-            <div>
-              <h2>Opret konto</h2>
-              <p className="panel__description">
-                Tilføj kun en konto, hvis den ikke allerede findes i listen.
-              </p>
-            </div>
-          </div>
-
-          <form
-            className="import-account-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void createAccount({
-                name,
-                accountNumber,
-                description,
-              });
-            }}
-          >
-            <TextInput
-              id="import-account-name"
-              labelText="Kontonavn"
-              onChange={(event) => setName(event.target.value)}
-              placeholder="Fx Budgetkonto"
-              value={name}
-            />
-            <TextInput
-              id="import-account-number"
-              labelText="Kontonummer"
-              onChange={(event) => setAccountNumber(event.target.value)}
-              placeholder="Valgfrit"
-              value={accountNumber}
-            />
-            <TextInput
-              id="import-account-description"
-              labelText="Beskrivelse"
-              onChange={(event) => setDescription(event.target.value)}
-              placeholder="Valgfrit"
-              value={description}
-            />
-            <Button disabled={!name.trim() || isCreating} renderIcon={Add} type="submit">
-              {isCreating ? "Opretter..." : "Opret konto"}
-            </Button>
-          </form>
-
-          {error ? (
-            <InlineNotification
-              hideCloseButton
-              kind="error"
-              lowContrast
-              subtitle={error}
-              title="Konto fejlede"
-            />
-          ) : null}
-        </Tile>
-      </Column>
-
-      <Column lg={11} md={8} sm={4}>
+    <>
+      <Grid narrow className="budget-grid import-layout">
+        <Column lg={16} md={8} sm={4}>
         <div className="import-workspace">
           <Tile className="panel import-account-list">
             <div className="panel__header">
@@ -210,23 +157,25 @@ export function CsvImportWorkspace() {
                   filtrering på Poster-siden.
                 </p>
               </div>
-              <div className="import-account-view-toggle">
-                <Button
-                  kind={showClosed ? "ghost" : "tertiary"}
-                  onClick={() => setShowClosed(false)}
-                  size="sm"
-                >
-                  Vis åbne
-                </Button>
-                <Button
-                  kind={showClosed ? "tertiary" : "ghost"}
-                  onClick={() => setShowClosed(true)}
-                  size="sm"
-                >
-                  Vis lukkede
-                </Button>
-              </div>
+              <Button
+                kind="secondary"
+                onClick={() => setIsCreateModalOpen(true)}
+                renderIcon={Add}
+                size="sm"
+                type="button"
+              >
+                Opret konto
+              </Button>
             </div>
+            {error ? (
+              <InlineNotification
+                hideCloseButton
+                kind="error"
+                lowContrast
+                subtitle={error}
+                title="Konto fejlede"
+              />
+            ) : null}
             <div className="import-account-options">
               {visibleAccounts.length ? (
                 visibleAccounts.map((account) => (
@@ -282,10 +231,11 @@ export function CsvImportWorkspace() {
                       ) : (
                         <>
                           <Button
-                            kind="ghost"
+                            kind="tertiary"
                             onClick={(event) => {
                               event.stopPropagation();
                               setSelectedAccountId(account.id);
+                              setImportAccount(account);
                             }}
                             size="sm"
                             type="button"
@@ -294,7 +244,7 @@ export function CsvImportWorkspace() {
                           </Button>
                           <Button
                             disabled={updatingAccountId === account.id}
-                            kind="ghost"
+                            kind="danger--ghost"
                             onClick={(event) => {
                               event.stopPropagation();
                               void setAccountClosed(account, true);
@@ -306,32 +256,80 @@ export function CsvImportWorkspace() {
                           </Button>
                         </>
                       )}
-                      {account.id === selectedAccountId ? (
-                        <span className="import-account-option__status">Valgt</span>
-                      ) : null}
                     </span>
                   </div>
                 ))
               ) : (
                 <p className="import-empty-state">
-                  {showClosed
-                    ? "Ingen lukkede konti."
-                    : "Ingen konti endnu. Opret for eksempel Budgetkonto eller Husholdning til venstre."}
+                  Ingen åbne konti endnu. Opret for eksempel Budgetkonto eller
+                  Husholdning.
                 </p>
               )}
             </div>
           </Tile>
-
-          {selectedAccount ? (
-            <CsvImportPanel
-              accountId={selectedAccount.id}
-              accountName={selectedAccount.name}
-              accountNumber={selectedAccount.accountNumber}
-              compact
-            />
-          ) : null}
         </div>
       </Column>
     </Grid>
+      <Modal
+        modalHeading="Opret konto"
+        onRequestClose={() => setIsCreateModalOpen(false)}
+        open={isCreateModalOpen}
+        passiveModal
+      >
+        <p className="modal-description">
+          Tilføj kun en konto, hvis den ikke allerede findes i listen.
+        </p>
+        <form
+          className="import-account-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createAccount({
+              name,
+              accountNumber,
+              description,
+            });
+          }}
+        >
+          <TextInput
+            id="import-account-name"
+            labelText="Kontonavn"
+            onChange={(event) => setName(event.target.value)}
+            placeholder="Fx Budgetkonto"
+            value={name}
+          />
+          <TextInput
+            id="import-account-number"
+            labelText="Kontonummer"
+            onChange={(event) => setAccountNumber(event.target.value)}
+            placeholder="Valgfrit"
+            value={accountNumber}
+          />
+          <TextInput
+            id="import-account-description"
+            labelText="Beskrivelse"
+            onChange={(event) => setDescription(event.target.value)}
+            placeholder="Valgfrit"
+            value={description}
+          />
+          <Button disabled={!name.trim() || isCreating} renderIcon={Add} type="submit">
+            {isCreating ? "Opretter..." : "Opret konto"}
+          </Button>
+        </form>
+      </Modal>
+      <Modal
+        modalHeading={importAccount ? `Importer CSV til ${importAccount.name}` : "Importer CSV"}
+        onRequestClose={() => setImportAccount(null)}
+        open={Boolean(importAccount)}
+        passiveModal
+      >
+        {importAccount ? (
+          <CsvImportPanel
+            accountId={importAccount.id}
+            accountName={importAccount.name}
+            accountNumber={importAccount.accountNumber}
+          />
+        ) : null}
+      </Modal>
+    </>
   );
 }

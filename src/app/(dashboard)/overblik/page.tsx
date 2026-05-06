@@ -21,7 +21,6 @@ import {
   monthlyOverviews as staticMonthlyOverviews,
 } from "@/lib/mock-data";
 import { IncomeExpenseChart } from "@/components/income-expense-chart";
-import { SpendingVisualization } from "@/components/spending-visualization";
 import {
   clearClientCache,
   readClientCache,
@@ -231,19 +230,6 @@ export default function OverviewPage() {
                 </span>
               </p>
             </section>
-
-            <Tile className="panel spending-panel">
-              <div className="panel__header">
-                <div>
-                  <h2>Forbrug pr. kategori</h2>
-                </div>
-              </div>
-              <SpendingVisualization
-                items={selectedOverview.categorySpend}
-                monthLabel={selectedOverview.label}
-                totalAmount={selectedOverview.spendingTotal}
-              />
-            </Tile>
 
             <Tile className="panel">
               <IncomeExpenseChart history={overviewData.incomeExpenseHistory} />

@@ -313,10 +313,50 @@ function includesAny(text: string, words: string[]) {
   return words.some((word) => lower.includes(word));
 }
 
+function isLikelyInternalTransfer(text: string) {
+  const lower = text.toLowerCase();
+  const transferText =
+    includesAny(lower, [
+      "overførsel konto",
+      "overfoersel konto",
+      "konto 9070",
+      "overført til",
+      "overfort til",
+      "til husholdningskonto",
+      "til budgetkonto",
+      "til opsparingskonto",
+    ]) ||
+    /^overførsel\b/i.test(text.trim()) ||
+    /^overfoersel\b/i.test(text.trim());
+  const incomeText = includesAny(lower, [
+    "løn",
+    "loen",
+    "månedsløn",
+    "maanedsloen",
+    "lønoverførsel",
+    "loenoverfoersel",
+    "skat",
+    "børne",
+    "boerne",
+    "ungeydelse",
+    "refusion",
+    "rente",
+    "udbytte",
+    "afkast",
+    "gave",
+  ]);
+
+  return transferText && !incomeText;
+}
+
 function categoryFor(
   text: string,
   amount: number,
 ): { category: string; kind: ImportedPosting["kind"] } {
+  if (isLikelyInternalTransfer(text)) {
+    return { category: "Kontooverførsel", kind: "transfer" as const };
+  }
+
   if (amount > 0) {
     if (includesAny(text, ["løn", "månedsløn", "lønoverførsel"])) {
       return { category: "Løn", kind: "income" as const };
@@ -331,19 +371,6 @@ function categoryFor(
     }
 
     return { category: "Anden indkomst", kind: "income" as const };
-  }
-
-  if (
-    includesAny(text, [
-      "overførsel konto",
-      "til husholdningskonto",
-      "til opsparingskonto",
-      "til privat",
-      "konto 9070",
-      "overført til",
-    ])
-  ) {
-    return { category: "Kontooverførsel", kind: "transfer" as const };
   }
 
   if (includesAny(text, ["børneopsparing", "nordnet", "spard plus"])) {
@@ -674,7 +701,13 @@ export function buildDashboardDataFromPostings(
 ) {
   const records = postings
     .map((posting) => {
-      const resolvedCategory = resolveCategory(posting.category, posting.kind);
+      const savedCategory = resolveCategory(posting.category, posting.kind);
+      const resolvedCategory =
+        posting.amountMinor > 0 &&
+        savedCategory.postingType === "income" &&
+        isLikelyInternalTransfer(posting.description)
+          ? resolveCategory("Kontooverførsel", "transfer")
+          : savedCategory;
 
       return {
         ...posting,
@@ -878,6 +911,19 @@ export function buildDashboardDataFromPostings(
     ].slice(0, 2);
   }
 
+  function topCategoryAmountDescriptions(key: string, category: string) {
+    return expenseRecordsForMonth(key)
+      .filter((record) => record.mainCategory === category)
+      .sort((a, b) => Math.abs(b.amount) - Math.abs(a.amount))
+      .slice(0, 2)
+      .map(
+        (record) =>
+          `${compactDescription(record.description)} (${formatKr(
+            Math.abs(Math.round(record.amount)),
+          )})`,
+      );
+  }
+
   function normalizedRecurringName(record: PostingRecord) {
     return record.description
       .toLowerCase()
@@ -992,6 +1038,19 @@ export function buildDashboardDataFromPostings(
 
     if (categoryChange && categoryChange.change !== null) {
       const isLower = categoryChange.change < 0;
+      const currentDrivers = topCategoryAmountDescriptions(key, categoryChange.category);
+      const previousDrivers = topCategoryAmountDescriptions(
+        previousKey,
+        categoryChange.category,
+      );
+      const driverSentence = isLower
+        ? previousDrivers.length
+          ? ` Sidste måned fyldte især ${previousDrivers.join(" og ")}, så faldet ligner en konkret engangspost eller afsluttet betaling.`
+          : ""
+        : currentDrivers.length
+          ? ` Denne måned skyldes stigningen især ${currentDrivers.join(" og ")}.`
+          : "";
+
       insights.push({
         id: `${key}-category-change-${categoryChange.category}`,
         type: "anomaly",
@@ -1007,7 +1066,7 @@ export function buildDashboardDataFromPostings(
           Math.abs(Math.round(categoryChange.difference)),
         )} ${
           isLower ? "mindre" : "mere"
-        } i månedens udgifter.`,
+        } i månedens udgifter.${driverSentence}`,
         metric: `${isLower ? "↓" : "↑"} ${Math.abs(categoryChange.change)}%`,
         actionLabel: "Se kategori",
         actionHref: posterHref({
@@ -1215,7 +1274,7 @@ export function buildDashboardDataFromPostings(
             " mod sidste måned",
           ),
           tag: "CSV",
-          type: income >= previousMonthIncome ? "green" : "blue",
+          type: income >= previousMonthIncome ? "green" : "red",
         },
         {
           id: "expenses",
@@ -1227,7 +1286,7 @@ export function buildDashboardDataFromPostings(
               ? `${Math.round((expenses / priorExpenses) * 100)}% af sidste måned`
               : "Ny måned",
           tag: "CSV",
-          type: "blue",
+          type: expenses <= priorExpenses || priorExpenses === 0 ? "green" : "red",
         },
         {
           id: "savings",
