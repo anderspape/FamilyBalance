@@ -349,6 +349,34 @@ function isLikelyInternalTransfer(text: string) {
   return transferText && !incomeText;
 }
 
+function incomeCategoryForText(text: string) {
+  if (includesAny(text, ["lønoverførsel", "loenoverfoersel", "månedsløn", "maanedsloen", "løn"])) {
+    return "Løn";
+  }
+
+  if (includesAny(text, ["overskydende skat", "skat"])) {
+    return "Overskydende skat";
+  }
+
+  if (includesAny(text, ["børne", "boerne", "ungeydelse"])) {
+    return "Børnepenge";
+  }
+
+  if (includesAny(text, ["refusion"])) {
+    return "Anden indkomst";
+  }
+
+  if (includesAny(text, ["rente"])) {
+    return "Renteindtægter";
+  }
+
+  if (includesAny(text, ["udbytte", "afkast"])) {
+    return "Udbytte & afkast";
+  }
+
+  return "Anden indkomst";
+}
+
 function categoryFor(
   text: string,
   amount: number,
@@ -358,19 +386,7 @@ function categoryFor(
   }
 
   if (amount > 0) {
-    if (includesAny(text, ["løn", "månedsløn", "lønoverførsel"])) {
-      return { category: "Løn", kind: "income" as const };
-    }
-
-    if (includesAny(text, ["rente", "udbytte", "afkast"])) {
-      return { category: "Renteindtægter", kind: "income" as const };
-    }
-
-    if (includesAny(text, ["skat"])) {
-      return { category: "Overskydende skat", kind: "income" as const };
-    }
-
-    return { category: "Anden indkomst", kind: "income" as const };
+    return { category: incomeCategoryForText(text), kind: "income" as const };
   }
 
   if (includesAny(text, ["børneopsparing", "nordnet", "spard plus"])) {
@@ -707,6 +723,8 @@ export function buildDashboardDataFromPostings(
         savedCategory.postingType === "income" &&
         isLikelyInternalTransfer(posting.description)
           ? resolveCategory("Kontooverførsel", "transfer")
+          : posting.amountMinor > 0 && savedCategory.postingType === "income"
+            ? resolveCategory(incomeCategoryForText(posting.description), "income")
           : savedCategory;
 
       return {
@@ -816,12 +834,89 @@ export function buildDashboardDataFromPostings(
       .slice(0, 5);
   }
 
+  function buildVariableSpend(key: string) {
+    const previousKey = previousMonthKey(key);
+    const variableRecords = recordsForMonth(key).filter(
+      (record) => record.amount < 0 && record.kind === "expense",
+    );
+    const totalVariable = variableRecords.reduce(
+      (total, record) => total + Math.abs(record.amount),
+      0,
+    );
+    const variableCategories = [
+      ...new Set(variableRecords.map((record) => record.subcategory)),
+    ];
+
+    return variableCategories
+      .map((category) => {
+        const value = sum(
+          records,
+          (record) =>
+            monthKey(record.date) === key &&
+            record.amount < 0 &&
+            record.kind === "expense" &&
+            record.subcategory === category,
+          (record) => Math.abs(record.amount),
+        );
+        const previousValue = sum(
+          records,
+          (record) =>
+            monthKey(record.date) === previousKey &&
+            record.amount < 0 &&
+            record.kind === "expense" &&
+            record.subcategory === category,
+          (record) => Math.abs(record.amount),
+        );
+        const change =
+          previousValue === 0
+            ? value === 0
+              ? "0%"
+              : "+100%"
+            : `${value - previousValue > 0 ? "+" : ""}${Math.round(
+                ((value - previousValue) / previousValue) * 100,
+              )}%`;
+
+        return {
+          category,
+          value: Math.round(value),
+          amount: formatKr(Math.round(value)),
+          percent: totalVariable ? Math.round((value / totalVariable) * 100) : 0,
+          monthIndex: change,
+        };
+      })
+      .filter((item) => item.value > 0)
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 6);
+  }
+
+  function currentMonthKey() {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  }
+
+  function incomeProjection(key: string) {
+    const income = monthlyIncome[key] ?? 0;
+    const previousIncome = monthlyIncome[previousMonthKey(key)] ?? 0;
+    const averageIncome = previousAverage(months, monthlyIncome, key);
+    const expectedIncome = Math.max(previousIncome, averageIncome);
+    const shouldProject =
+      key === currentMonthKey() && expectedIncome > 0 && income < expectedIncome * 0.5;
+
+    return {
+      expectedIncome: shouldProject ? expectedIncome : income,
+      projectedAmount: shouldProject ? expectedIncome - income : 0,
+      isProjected: shouldProject,
+    };
+  }
+
   function buildMonthlySummary(key: string, items: ReturnType<typeof buildCategorySpend>) {
     const label = displayMonth(key);
     const income = monthlyIncome[key] ?? 0;
+    const projectedIncome = incomeProjection(key);
+    const effectiveIncome = projectedIncome.expectedIncome;
     const expenses = (monthlyBills[key] ?? 0) + (monthlySpending[key] ?? 0);
     const savings = monthlySavings[key] ?? 0;
-    const net = income - expenses - savings;
+    const net = effectiveIncome - expenses - savings;
     const previousExpenses =
       (monthlyBills[previousMonthKey(key)] ?? 0) +
       (monthlySpending[previousMonthKey(key)] ?? 0);
@@ -848,7 +943,13 @@ export function buildDashboardDataFromPostings(
         }`
       : "Der er endnu ingen udgiftskategori at fremhæve.";
 
-    if (income === 0) {
+    const incomeText = projectedIncome.isProjected
+      ? `${formatKr(Math.round(income))} registreret indkomst og ca. ${formatKr(
+          Math.round(projectedIncome.projectedAmount),
+        )} forventet ultimo`
+      : `${formatKr(Math.round(income))} i indkomst`;
+
+    if (income === 0 && !projectedIncome.isProjected) {
       return `${label}: der er endnu ikke registreret indkomst, mens ${formatKr(
         Math.round(expenses),
       )} er bogført som udgifter. ${topSentence} Nettoresultatet står på ${formatSignedKr(
@@ -856,7 +957,7 @@ export function buildDashboardDataFromPostings(
       )}. ${expenseChange} ${averageSentence}`.trim();
     }
 
-    return `${label}: ${formatKr(Math.round(income))} i indkomst og ${formatKr(
+    return `${label}: ${incomeText} og ${formatKr(
       Math.round(expenses),
     )} i udgifter. ${topSentence} Nettoresultatet står på ${formatSignedKr(
       Math.round(net),
@@ -865,9 +966,10 @@ export function buildDashboardDataFromPostings(
 
   function buildStatusSummary(key: string) {
     const income = monthlyIncome[key] ?? 0;
+    const projectedIncome = incomeProjection(key);
     const expenses = (monthlyBills[key] ?? 0) + (monthlySpending[key] ?? 0);
     const savings = monthlySavings[key] ?? 0;
-    const net = income - expenses - savings;
+    const net = projectedIncome.expectedIncome - expenses - savings;
     const previousExpenses =
       (monthlyBills[previousMonthKey(key)] ?? 0) +
       (monthlySpending[previousMonthKey(key)] ?? 0);
@@ -875,7 +977,11 @@ export function buildDashboardDataFromPostings(
     const expenseChange = describeExpenseChange(expenses, previousExpenses);
     const incomeChange = percentChange(income, previousIncome);
     const incomeSentence =
-      incomeChange === null
+      projectedIncome.isProjected
+        ? `Lønnen er endnu ikke registreret, så status bruger ca. ${formatKr(
+            Math.round(projectedIncome.expectedIncome),
+          )} som forventet indkomst ultimo.`
+        : incomeChange === null
         ? "Indkomsten har endnu ikke et sammenligningspunkt."
         : incomeChange === 0
           ? "Indkomsten matcher sidste måned."
@@ -955,9 +1061,10 @@ export function buildDashboardDataFromPostings(
   ): BudgetInsight[] {
     const label = displayMonth(key);
     const income = monthlyIncome[key] ?? 0;
+    const projectedIncome = incomeProjection(key);
     const expenses = (monthlyBills[key] ?? 0) + (monthlySpending[key] ?? 0);
     const savings = monthlySavings[key] ?? 0;
-    const net = income - expenses - savings;
+    const net = projectedIncome.expectedIncome - expenses - savings;
     const previousKey = previousMonthKey(key);
     const insights: InsightCandidate[] = [];
 
@@ -968,8 +1075,20 @@ export function buildDashboardDataFromPostings(
       title: net >= 0 ? "Måneden har luft" : "Måneden er under pres",
       body:
         net >= 0
-          ? `${label} har ${formatKr(Math.round(net))} tilbage efter udgifter og opsparing. Det giver plads til ekstra opsparing eller uforudsete udgifter.`
-          : `${label} mangler ${formatKr(Math.abs(Math.round(net)))} for at gå i nul efter udgifter og opsparing. Start med de største udgiftsdrivere, før du ændrer småposter.`,
+          ? `${label} har ${formatKr(Math.round(net))} tilbage efter udgifter og opsparing.${
+              projectedIncome.isProjected
+                ? ` Det inkluderer ca. ${formatKr(
+                    Math.round(projectedIncome.projectedAmount),
+                  )} forventet løn ultimo.`
+                : " Det giver plads til ekstra opsparing eller uforudsete udgifter."
+            }`
+          : `${label} mangler ${formatKr(Math.abs(Math.round(net)))} for at gå i nul efter udgifter og opsparing.${
+              projectedIncome.isProjected
+                ? ` Det er efter forventet løn ultimo på ca. ${formatKr(
+                    Math.round(projectedIncome.expectedIncome),
+                  )}.`
+                : " Start med de største udgiftsdrivere, før du ændrer småposter."
+            }`,
       metric: formatSignedKr(Math.round(net)),
       actionLabel: net >= 0 ? "Se poster" : "Se udgifter",
       actionHref: posterHref({ period: "month", month: key }),
@@ -1216,6 +1335,7 @@ export function buildDashboardDataFromPostings(
     const priorSavings = monthlySavings[previousKey] ?? 0;
     const items = buildCategorySpend(key);
     const incomeSources = buildIncomeSources(key);
+    const variableSpend = buildVariableSpend(key);
     const fallbackSummary = buildMonthlySummary(key, items);
     const insights = buildMonthInsights(key, items);
     const primaryBalance = accountBalanceAtMonth(primaryAccountId, key);
@@ -1302,6 +1422,7 @@ export function buildDashboardDataFromPostings(
         },
       ],
       incomeSources,
+      variableSpend,
       categorySpend: items,
       spendingTotal: formatKr(Math.round(expenses)),
     };

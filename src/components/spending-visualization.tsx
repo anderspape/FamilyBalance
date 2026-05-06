@@ -14,10 +14,12 @@ export function SpendingVisualization({
   items = categorySpend,
   monthLabel = "Maj 2026",
   totalAmount = "21.480 kr.",
+  variableItems = [],
 }: {
   items?: SpendingItem[];
   monthLabel?: string;
   totalAmount?: string;
+  variableItems?: SpendingItem[];
 }) {
   if (items.length === 0) {
     return <div className="empty-state">Ingen udgifter i denne måned.</div>;
@@ -36,30 +38,49 @@ export function SpendingVisualization({
 
   return (
     <div className="spending-visualization">
-      <div
-        aria-label="Fordeling af månedens udgifter efter kategori"
-        className="spending-donut"
-        role="img"
-        style={{
-          background: `conic-gradient(${segments.join(", ")})`,
-        }}
-      >
-        <div>
-          <span>Brugt</span>
-          <strong>{totalAmount}</strong>
-          <small>{monthLabel}</small>
+      <div className="spending-visualization__main">
+        <div
+          aria-label="Fordeling af månedens udgifter efter kategori"
+          className="spending-donut"
+          role="img"
+          style={{
+            background: `conic-gradient(${segments.join(", ")})`,
+          }}
+        >
+          <div>
+            <span>Brugt</span>
+            <strong>{totalAmount}</strong>
+            <small>{monthLabel}</small>
+          </div>
+        </div>
+
+        <div className="spending-legend">
+          {items.map((item, index) => (
+            <SpendingLegendRow
+              color={colors[index % colors.length]}
+              item={item}
+              key={item.category}
+            />
+          ))}
         </div>
       </div>
-
-      <div className="spending-legend">
-        {items.map((item, index) => (
-          <SpendingLegendRow
-            color={colors[index % colors.length]}
-            item={item}
-            key={item.category}
-          />
-        ))}
-      </div>
+      {variableItems.length ? (
+        <div className="variable-spend">
+          <div>
+            <span className="budget-kicker">Variable udgifter</span>
+            <h3>Det der kan flytte sig</h3>
+          </div>
+          <div className="variable-spend__list">
+            {variableItems.map((item, index) => (
+              <SpendingLegendRow
+                color={colors[(index + 2) % colors.length]}
+                item={item}
+                key={item.category}
+              />
+            ))}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -21,6 +21,7 @@ type SectionId = "income" | "expenses";
 type MonthlyOverview = (typeof staticMonthlyOverviews)[number] & {
   incomeSources?: typeof staticIncomeSources;
   spendingTotal?: string;
+  variableSpend?: typeof staticCategorySpend;
 };
 
 type SectionCopy = {
@@ -195,6 +196,7 @@ export function MonthlySectionPage({ sectionId }: { sectionId: SectionId }) {
                   items={items}
                   monthLabel={selectedOverview.label}
                   totalAmount={selectedOverview.spendingTotal ?? summary?.value ?? "0 kr."}
+                  variableItems={selectedOverview.variableSpend ?? []}
                 />
               ) : (
                 <CategoryBars items={items} tone="income" />

@@ -120,6 +120,47 @@ function isLikelyInternalTransfer(text: string) {
   return transferText && !incomeText;
 }
 
+function includesAny(text: string, words: string[]) {
+  const lower = text.toLowerCase();
+  return words.some((word) => lower.includes(word));
+}
+
+function incomeCategoryForText(text: string) {
+  if (
+    includesAny(text, [
+      "lønoverførsel",
+      "loenoverfoersel",
+      "månedsløn",
+      "maanedsloen",
+      "løn",
+    ])
+  ) {
+    return "Løn";
+  }
+
+  if (includesAny(text, ["overskydende skat", "skat"])) {
+    return "Overskydende skat";
+  }
+
+  if (includesAny(text, ["børne", "boerne", "ungeydelse"])) {
+    return "Børnepenge";
+  }
+
+  if (includesAny(text, ["refusion"])) {
+    return "Anden indkomst";
+  }
+
+  if (includesAny(text, ["rente"])) {
+    return "Renteindtægter";
+  }
+
+  if (includesAny(text, ["udbytte", "afkast"])) {
+    return "Udbytte & afkast";
+  }
+
+  return "Anden indkomst";
+}
+
 function normalizedCategory(posting: Awaited<ReturnType<typeof readPosterTransactions>>[number]) {
   const savedCategory = resolveCategory(posting.category);
 
@@ -129,6 +170,10 @@ function normalizedCategory(posting: Awaited<ReturnType<typeof readPosterTransac
     isLikelyInternalTransfer(posting.description)
   ) {
     return resolveCategory("Kontooverførsel", "transfer");
+  }
+
+  if (posting.amountMinor > 0 && savedCategory.postingType === "income") {
+    return resolveCategory(incomeCategoryForText(posting.description), "income");
   }
 
   return savedCategory;
