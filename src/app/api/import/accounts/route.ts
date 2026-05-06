@@ -8,6 +8,11 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+const privateCacheHeaders = {
+  "Cache-Control": "private, max-age=20, stale-while-revalidate=60",
+};
+const noStoreHeaders = { "Cache-Control": "no-store" };
+
 async function getUser() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -21,19 +26,25 @@ export async function GET() {
   const { supabase, user } = await getUser();
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   const accounts = await readImportAccounts(supabase, user.id);
 
-  return NextResponse.json({ accounts });
+  return NextResponse.json({ accounts }, { headers: privateCacheHeaders });
 }
 
 export async function POST(request: Request) {
   const { supabase, user } = await getUser();
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   try {
@@ -41,7 +52,10 @@ export async function POST(request: Request) {
     const name = typeof body.name === "string" ? body.name.trim() : "";
 
     if (!name) {
-      return NextResponse.json({ error: "Kontonavn mangler." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Kontonavn mangler." },
+        { headers: noStoreHeaders, status: 400 },
+      );
     }
 
     const account = await createImportAccount(supabase, user.id, {
@@ -52,12 +66,18 @@ export async function POST(request: Request) {
         typeof body.description === "string" ? body.description : undefined,
     });
 
-    return NextResponse.json({ account }, { status: 201 });
+    return NextResponse.json(
+      { account },
+      { headers: noStoreHeaders, status: 201 },
+    );
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Kontoen kunne ikke oprettes.";
 
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(
+      { error: message },
+      { headers: noStoreHeaders, status: 400 },
+    );
   }
 }
 
@@ -65,7 +85,10 @@ export async function PATCH(request: Request) {
   const { supabase, user } = await getUser();
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   try {
@@ -76,18 +99,21 @@ export async function PATCH(request: Request) {
     if (!id || closed === null) {
       return NextResponse.json(
         { error: "Konto og lukket-status mangler." },
-        { status: 400 },
+        { headers: noStoreHeaders, status: 400 },
       );
     }
 
     await setImportAccountClosed(supabase, user.id, { id, closed });
     const accounts = await readImportAccounts(supabase, user.id);
 
-    return NextResponse.json({ accounts });
+    return NextResponse.json({ accounts }, { headers: noStoreHeaders });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Kontoen kunne ikke opdateres.";
 
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(
+      { error: message },
+      { headers: noStoreHeaders, status: 400 },
+    );
   }
 }

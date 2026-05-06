@@ -22,6 +22,11 @@ import {
 } from "@/lib/mock-data";
 import { IncomeExpenseChart } from "@/components/income-expense-chart";
 import { SpendingVisualization } from "@/components/spending-visualization";
+import {
+  clearClientCache,
+  readClientCache,
+  writeClientCache,
+} from "@/lib/client-cache";
 import type { BudgetInsight } from "@/lib/postings";
 
 type AccountOverview = {
@@ -43,6 +48,9 @@ type OverviewData = {
   monthlyOverviews: MonthlyOverview[];
 };
 
+const budgetDataCacheKey = "budget-data";
+const budgetDataCacheAgeMs = 60_000;
+
 export default function OverviewPage() {
   const [overviewData, setOverviewData] = useState<OverviewData>({
     accounts: staticAccounts,
@@ -53,17 +61,33 @@ export default function OverviewPage() {
   const [selectedMonthId, setSelectedMonthId] = useState(
     staticMonthlyOverviews.at(-1)?.id ?? "",
   );
-  const fetchBudgetData = useCallback(async () => {
-    const response = await fetch("/api/budget-data", { cache: "no-store" });
+  const fetchBudgetData = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cachedData = readClientCache<OverviewData>(
+        budgetDataCacheKey,
+        budgetDataCacheAgeMs,
+      );
+
+      if (cachedData) {
+        setOverviewData(cachedData);
+      }
+    }
+
+    const response = await fetch("/api/budget-data", {
+      cache: forceRefresh ? "no-store" : "default",
+    });
     if (!response.ok) return;
 
     const data = await response.json();
-    setOverviewData({
+    const nextOverviewData = {
       accounts: data.accounts ?? staticAccounts,
       insights: data.insights ?? [],
       incomeExpenseHistory: data.incomeExpenseHistory ?? staticIncomeExpenseHistory,
       monthlyOverviews: data.monthlyOverviews ?? staticMonthlyOverviews,
-    });
+    };
+
+    setOverviewData(nextOverviewData);
+    writeClientCache(budgetDataCacheKey, nextOverviewData);
     setSelectedMonthId((currentId) => {
       const hasCurrentMonth = data.monthlyOverviews?.some(
         (overview: (typeof staticMonthlyOverviews)[number]) =>
@@ -77,12 +101,16 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(fetchBudgetData, 0);
+    const timeout = window.setTimeout(() => void fetchBudgetData(), 0);
+    const handleSync = () => {
+      clearClientCache();
+      void fetchBudgetData(true);
+    };
 
-    window.addEventListener("familybalance:sync", fetchBudgetData);
+    window.addEventListener("familybalance:sync", handleSync);
     return () => {
       window.clearTimeout(timeout);
-      window.removeEventListener("familybalance:sync", fetchBudgetData);
+      window.removeEventListener("familybalance:sync", handleSync);
     };
   }, [fetchBudgetData]);
 

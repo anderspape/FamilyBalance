@@ -13,6 +13,11 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+const privateCacheHeaders = {
+  "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+};
+const noStoreHeaders = { "Cache-Control": "no-store" };
+
 async function getUser() {
   const supabase = await createServerSupabaseClient();
   const {
@@ -75,7 +80,10 @@ export async function GET(request: Request) {
   const { supabase, user } = await getUser();
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   const url = new URL(request.url);
@@ -113,56 +121,65 @@ export async function GET(request: Request) {
     0,
   );
 
-  return NextResponse.json({
-    transactions: filteredPostings.map((posting) => {
-      const category = resolveCategory(posting.category);
+  return NextResponse.json(
+    {
+      transactions: filteredPostings.map((posting) => {
+        const category = resolveCategory(posting.category);
 
-      return {
-        id: posting.id,
-        importAccountId: posting.importAccountId ?? null,
-        accountName: posting.accountName,
-        accountNumber: posting.accountNumber,
-        bookingDate: posting.bookingDate,
-        description: posting.description,
-        amountMinor: posting.amountMinor,
-        currency: posting.currency,
-        category: category.name,
-        categorySlug: category.slug,
-        mainCategory: category.mainCategory,
-        subcategory: category.name,
-        kind: category.postingType,
-        postingType: category.postingType,
-        postingTypeLabel: getPostingTypeLabel(category.postingType),
-      };
-    }),
-    summary: {
-      count: filteredPostings.length,
-      totalMinor,
-      averageMinor: filteredPostings.length
-        ? Math.round(totalMinor / filteredPostings.length)
-        : 0,
-      uncategorizedCount: filteredPostings.filter(
-        (posting) => resolveCategory(posting.category).postingType === "uncategorized",
-      ).length,
+        return {
+          id: posting.id,
+          importAccountId: posting.importAccountId ?? null,
+          accountName: posting.accountName,
+          accountNumber: posting.accountNumber,
+          bookingDate: posting.bookingDate,
+          description: posting.description,
+          amountMinor: posting.amountMinor,
+          currency: posting.currency,
+          category: category.name,
+          categorySlug: category.slug,
+          mainCategory: category.mainCategory,
+          subcategory: category.name,
+          kind: category.postingType,
+          postingType: category.postingType,
+          postingTypeLabel: getPostingTypeLabel(category.postingType),
+        };
+      }),
+      summary: {
+        count: filteredPostings.length,
+        totalMinor,
+        averageMinor: filteredPostings.length
+          ? Math.round(totalMinor / filteredPostings.length)
+          : 0,
+        uncategorizedCount: filteredPostings.filter(
+          (posting) =>
+            resolveCategory(posting.category).postingType === "uncategorized",
+        ).length,
+      },
+      options: {
+        months: [
+          ...new Set(allPostings.map((posting) => monthKey(posting.bookingDate))),
+        ]
+          .sort()
+          .reverse(),
+        years: [
+          ...new Set(allPostings.map((posting) => posting.bookingDate.slice(0, 4))),
+        ]
+          .sort()
+          .reverse(),
+      },
     },
-    options: {
-      months: [...new Set(allPostings.map((posting) => monthKey(posting.bookingDate)))]
-        .sort()
-        .reverse(),
-      years: [
-        ...new Set(allPostings.map((posting) => posting.bookingDate.slice(0, 4))),
-      ]
-        .sort()
-        .reverse(),
-    },
-  });
+    { headers: privateCacheHeaders },
+  );
 }
 
 export async function PATCH(request: Request) {
   const { supabase, user } = await getUser();
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   try {
@@ -173,17 +190,20 @@ export async function PATCH(request: Request) {
     if (!id || !category) {
       return NextResponse.json(
         { error: "Postering og kategori mangler." },
-        { status: 400 },
+        { headers: noStoreHeaders, status: 400 },
       );
     }
 
     await updateImportedTransactionCategory(supabase, user.id, { id, category });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: noStoreHeaders });
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Kategorien kunne ikke gemmes.";
 
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json(
+      { error: message },
+      { headers: noStoreHeaders, status: 400 },
+    );
   }
 }

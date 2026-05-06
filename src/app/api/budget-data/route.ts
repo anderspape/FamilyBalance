@@ -17,6 +17,10 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+const privateCacheHeaders = {
+  "Cache-Control": "private, max-age=30, stale-while-revalidate=120",
+};
+
 const emptyMonthNames = [
   "Jan",
   "Feb",
@@ -121,7 +125,10 @@ export async function GET() {
   } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
 
   if (supabase && !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: { "Cache-Control": "no-store" }, status: 401 },
+    );
   }
 
   const bankConnection =
@@ -162,29 +169,32 @@ export async function GET() {
         : importedDashboardData?.accounts ?? emptyDashboardData?.accounts ?? accounts;
   const dashboardData = importedDashboardData ?? emptyDashboardData;
 
-  return NextResponse.json({
-    accounts: connectedAccounts,
-    bankConnection: bankConnection
-      ? {
-          status: bankConnection.status,
-          syncedAt: bankConnection.syncedAt,
-          error: bankConnection.error,
-        }
-      : { status: "not_connected" },
-    dataSource: importedDashboardData
-      ? "imported"
-      : emptyDashboardData
-        ? "empty"
-        : "fallback",
-    dashboardMetrics: dashboardData?.dashboardMetrics ?? dashboardMetrics,
-    categorySpend: dashboardData?.categorySpend ?? categorySpend,
-    insights: dashboardData?.insights ?? [],
-    incomeSources: dashboardData?.incomeSources ?? [],
-    incomeExpenseHistory:
-      dashboardData?.incomeExpenseHistory ?? incomeExpenseHistory,
-    monthlyOverviews: dashboardData?.monthlyOverviews ?? monthlyOverviews,
-    monthlySummary: dashboardData?.monthlySummary ?? monthlySummary,
-    sectionSummaries: dashboardData?.sectionSummaries ?? sectionSummaries,
-    syncedAt: bankConnection?.syncedAt ?? new Date().toISOString(),
-  });
+  return NextResponse.json(
+    {
+      accounts: connectedAccounts,
+      bankConnection: bankConnection
+        ? {
+            status: bankConnection.status,
+            syncedAt: bankConnection.syncedAt,
+            error: bankConnection.error,
+          }
+        : { status: "not_connected" },
+      dataSource: importedDashboardData
+        ? "imported"
+        : emptyDashboardData
+          ? "empty"
+          : "fallback",
+      dashboardMetrics: dashboardData?.dashboardMetrics ?? dashboardMetrics,
+      categorySpend: dashboardData?.categorySpend ?? categorySpend,
+      insights: dashboardData?.insights ?? [],
+      incomeSources: dashboardData?.incomeSources ?? [],
+      incomeExpenseHistory:
+        dashboardData?.incomeExpenseHistory ?? incomeExpenseHistory,
+      monthlyOverviews: dashboardData?.monthlyOverviews ?? monthlyOverviews,
+      monthlySummary: dashboardData?.monthlySummary ?? monthlySummary,
+      sectionSummaries: dashboardData?.sectionSummaries ?? sectionSummaries,
+      syncedAt: bankConnection?.syncedAt ?? new Date().toISOString(),
+    },
+    { headers: privateCacheHeaders },
+  );
 }

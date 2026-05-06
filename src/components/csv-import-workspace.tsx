@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Button, Column, Grid, InlineNotification, TextInput, Tile } from "@carbon/react";
 import { Add, Wallet } from "@carbon/icons-react";
 import { CsvImportPanel } from "@/components/csv-import-panel";
+import { clearClientCache } from "@/lib/client-cache";
 import type { ImportAccount } from "@/lib/import-accounts";
 import { formatDate, formatMinorKr } from "@/lib/money";
 
@@ -31,7 +32,7 @@ export function CsvImportWorkspace() {
     let isMounted = true;
 
     async function loadAccounts() {
-      const response = await fetch("/api/import/accounts", { cache: "no-store" });
+      const response = await fetch("/api/import/accounts", { cache: "default" });
       if (!response.ok || !isMounted) return;
 
       const data = await response.json();
@@ -76,6 +77,7 @@ export function CsvImportWorkspace() {
 
       setAccounts((currentAccounts) => [...currentAccounts, data.account]);
       setSelectedAccountId(data.account.id);
+      clearClientCache();
       setName("");
       setAccountNumber("");
       setDescription("");
@@ -108,6 +110,7 @@ export function CsvImportWorkspace() {
 
       const nextAccounts = data.accounts ?? [];
       setAccounts(nextAccounts);
+      clearClientCache();
       setSelectedAccountId((currentId) => {
         if (
           nextAccounts.some(

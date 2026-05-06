@@ -3,6 +3,7 @@
 import { useRef, useState, type DragEvent } from "react";
 import { Button, InlineNotification, TextInput, Tile } from "@carbon/react";
 import { DocumentImport } from "@carbon/icons-react";
+import { clearClientCache } from "@/lib/client-cache";
 
 type ImportStatus = {
   kind: "success" | "error" | "info";
@@ -101,6 +102,7 @@ export function CsvImportPanel({
         title: "CSV importeret",
         subtitle: `${inserted} nye posteringer importeret, ${duplicates} dubletter sprunget over.${balance.trim() && !warning ? " Saldo er opdateret." : ""}${warning}`,
       });
+      clearClientCache();
       window.dispatchEvent(new Event("familybalance:sync"));
     } catch (error) {
       setStatus({

@@ -5,6 +5,11 @@ import { Column, Grid, Select, SelectItem, Tag, Tile } from "@carbon/react";
 import { CategoryBars } from "@/components/category-bars";
 import { TransactionsTable } from "@/components/transactions-table";
 import {
+  clearClientCache,
+  readClientCache,
+  writeClientCache,
+} from "@/lib/client-cache";
+import {
   categorySpend as staticCategorySpend,
   incomeSources as staticIncomeSources,
   monthlyOverviews as staticMonthlyOverviews,
@@ -25,6 +30,9 @@ type SectionCopy = {
   transactionsTitle: string;
   transactionsKicker: string;
 };
+
+const budgetDataCacheKey = "budget-data";
+const budgetDataCacheAgeMs = 60_000;
 
 const sectionCopy: Record<SectionId, SectionCopy> = {
   income: {
@@ -64,13 +72,28 @@ export function MonthlySectionPage({ sectionId }: { sectionId: SectionId }) {
     "fallback",
   );
 
-  const fetchBudgetData = useCallback(async () => {
-    const response = await fetch("/api/budget-data", { cache: "no-store" });
+  const fetchBudgetData = useCallback(async (forceRefresh = false) => {
+    if (!forceRefresh) {
+      const cachedData = readClientCache<{
+        dataSource?: "imported" | "empty" | "fallback";
+        monthlyOverviews?: MonthlyOverview[];
+      }>(budgetDataCacheKey, budgetDataCacheAgeMs);
+
+      if (cachedData?.monthlyOverviews) {
+        setMonthlyOverviews(cachedData.monthlyOverviews);
+        setDataSource(cachedData.dataSource ?? "fallback");
+      }
+    }
+
+    const response = await fetch("/api/budget-data", {
+      cache: forceRefresh ? "no-store" : "default",
+    });
     if (!response.ok) return;
 
     const data = await response.json();
     const nextOverviews = data.monthlyOverviews ?? staticMonthlyOverviews;
 
+    writeClientCache(budgetDataCacheKey, data);
     setMonthlyOverviews(nextOverviews);
     setDataSource(data.dataSource ?? "fallback");
     setSelectedMonthId((currentId) => {
@@ -83,12 +106,17 @@ export function MonthlySectionPage({ sectionId }: { sectionId: SectionId }) {
   }, []);
 
   useEffect(() => {
-    const timeout = window.setTimeout(fetchBudgetData, 0);
-    window.addEventListener("familybalance:sync", fetchBudgetData);
+    const timeout = window.setTimeout(() => void fetchBudgetData(), 0);
+    const handleSync = () => {
+      clearClientCache();
+      void fetchBudgetData(true);
+    };
+
+    window.addEventListener("familybalance:sync", handleSync);
 
     return () => {
       window.clearTimeout(timeout);
-      window.removeEventListener("familybalance:sync", fetchBudgetData);
+      window.removeEventListener("familybalance:sync", handleSync);
     };
   }, [fetchBudgetData]);
 

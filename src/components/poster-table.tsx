@@ -17,6 +17,11 @@ import {
   Tile,
 } from "@carbon/react";
 import { Save } from "@carbon/icons-react";
+import {
+  clearClientCache,
+  readClientCache,
+  writeClientCache,
+} from "@/lib/client-cache";
 import { categoryGroups, getPostingTypeLabel } from "@/lib/categories";
 import type { ImportAccount } from "@/lib/import-accounts";
 import { formatDate, formatMinorKr } from "@/lib/money";
@@ -69,6 +74,7 @@ function displayMonth(key: string) {
 }
 
 const categoryDefinitions = categoryGroups.flatMap((group) => group.categories);
+const posterCacheAgeMs = 60_000;
 
 export function PosterTable({
   accounts,
@@ -109,17 +115,45 @@ export function PosterTable({
 
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
 
-    async function loadPostings() {
+    async function loadPostings(forceRefresh = false) {
+      const cacheKey = `poster:${searchParams.toString()}`;
+      const cachedData = !forceRefresh
+        ? readClientCache<PosterResponse>(cacheKey, posterCacheAgeMs)
+        : null;
+
+      if (cachedData) {
+        setTransactions(cachedData.transactions);
+        setSummary(cachedData.summary);
+        setOptions(cachedData.options);
+        setCategoryDrafts(
+          Object.fromEntries(
+            cachedData.transactions.map((transaction) => [
+              transaction.id,
+              transaction.categorySlug,
+            ]),
+          ),
+        );
+      }
+
       const response = await fetch(`/api/poster?${searchParams.toString()}`, {
-        cache: "no-store",
+        cache: forceRefresh ? "no-store" : "default",
+        signal: controller.signal,
+      }).catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return null;
+        }
+
+        throw error;
       });
-      if (!response.ok || !isMounted) return;
+      if (!response?.ok || !isMounted) return;
 
       const data: PosterResponse = await response.json();
       setTransactions(data.transactions);
       setSummary(data.summary);
       setOptions(data.options);
+      writeClientCache(cacheKey, data);
       setCategoryDrafts(
         Object.fromEntries(
           data.transactions.map((transaction) => [
@@ -132,12 +166,21 @@ export function PosterTable({
       setYear((currentYear) => currentYear || data.options.years[0] || "");
     }
 
-    void loadPostings();
+    const timeout = window.setTimeout(() => void loadPostings(), query ? 180 : 0);
+    const handleSync = () => {
+      clearClientCache("poster:");
+      void loadPostings(true);
+    };
+
+    window.addEventListener("familybalance:sync", handleSync);
 
     return () => {
       isMounted = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+      window.removeEventListener("familybalance:sync", handleSync);
     };
-  }, [searchParams]);
+  }, [query, searchParams]);
 
   async function saveCategory(transaction: PosterTransaction) {
     const nextCategory = categoryDrafts[transaction.id]?.trim();
@@ -160,6 +203,7 @@ export function PosterTable({
         throw new Error("Kategorien kunne ikke gemmes.");
       }
 
+      clearClientCache();
       setTransactions((currentTransactions) =>
         currentTransactions.map((currentTransaction) =>
           currentTransaction.id === transaction.id

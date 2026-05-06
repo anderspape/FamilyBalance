@@ -11,6 +11,11 @@ import {
   TableHeader,
   TableRow,
 } from "@carbon/react";
+import {
+  clearClientCache,
+  readClientCache,
+  writeClientCache,
+} from "@/lib/client-cache";
 import { formatDate, formatMinorKr } from "@/lib/money";
 import { transactions } from "@/lib/mock-data";
 
@@ -36,6 +41,8 @@ const transactionHeaders = [
   { key: "type", header: "Type" },
   { key: "amount", header: "Beløb" },
 ];
+
+const posterCacheAgeMs = 60_000;
 
 export function TransactionsTable({
   title = "Seneste poster",
@@ -63,30 +70,52 @@ export function TransactionsTable({
       period: "month",
       month,
     });
+    const cacheKey = `poster:${params.toString()}`;
+
+    const loadRows = async (forceRefresh = false) => {
+      if (!forceRefresh) {
+        const cachedRows = readClientCache<PosterRow[]>(cacheKey, posterCacheAgeMs);
+        if (cachedRows) {
+          setPosterRows(cachedRows);
+        }
+      }
+
+      setIsLoading(!readClientCache<PosterRow[]>(cacheKey, posterCacheAgeMs));
+
+      try {
+        const response = await fetch(`/api/poster?${params.toString()}`, {
+          cache: forceRefresh ? "no-store" : "default",
+          signal: controller.signal,
+        });
+        const data = response.ok ? await response.json() : null;
+
+        if (data?.transactions) {
+          setPosterRows(data.transactions);
+          writeClientCache(cacheKey, data.transactions);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
     const timeout = window.setTimeout(() => {
-      setIsLoading(true);
-      fetch(`/api/poster?${params.toString()}`, {
-        cache: "no-store",
-        signal: controller.signal,
-      })
-        .then((response) => (response.ok ? response.json() : null))
-        .then((data) => {
-          if (data?.transactions) {
-            setPosterRows(data.transactions);
-          }
-        })
-        .catch((error) => {
-          if (error instanceof DOMException && error.name === "AbortError") {
-            return;
-          }
-        })
-        .finally(() => setIsLoading(false));
+      void loadRows();
     }, 0);
+    const handleSync = () => {
+      clearClientCache("poster:");
+      void loadRows(true);
+    };
+
+    window.addEventListener("familybalance:sync", handleSync);
 
     return () => {
       window.clearTimeout(timeout);
       controller.abort();
+      window.removeEventListener("familybalance:sync", handleSync);
     };
   }, [flow, month]);
 

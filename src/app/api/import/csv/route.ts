@@ -7,6 +7,8 @@ import { createServerSupabaseClient } from "@/lib/supabase-server";
 
 export const dynamic = "force-dynamic";
 
+const noStoreHeaders = { "Cache-Control": "no-store" };
+
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
     return error.message;
@@ -34,7 +36,10 @@ export async function POST(request: Request) {
   } = supabase ? await supabase.auth.getUser() : { data: { user: null } };
 
   if (!supabase || !user) {
-    return NextResponse.json({ error: "Ikke logget ind." }, { status: 401 });
+    return NextResponse.json(
+      { error: "Ikke logget ind." },
+      { headers: noStoreHeaders, status: 401 },
+    );
   }
 
   try {
@@ -46,13 +51,16 @@ export async function POST(request: Request) {
     const balance = formData.get("balance") ?? formData.get("balance_minor");
 
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "CSV-fil mangler." }, { status: 400 });
+      return NextResponse.json(
+        { error: "CSV-fil mangler." },
+        { headers: noStoreHeaders, status: 400 },
+      );
     }
 
     if (!file.name.toLowerCase().endsWith(".csv")) {
       return NextResponse.json(
         { error: "Upload en CSV-fil i posteringsformatet." },
-        { status: 400 },
+        { headers: noStoreHeaders, status: 400 },
       );
     }
 
@@ -68,7 +76,7 @@ export async function POST(request: Request) {
     if (balanceText && balanceMinor === null) {
       return NextResponse.json(
         { error: "Saldo skal være et tal, fx 64.844,61." },
-        { status: 400 },
+        { headers: noStoreHeaders, status: 400 },
       );
     }
 
@@ -105,9 +113,12 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ...result, warning });
+    return NextResponse.json({ ...result, warning }, { headers: noStoreHeaders });
   } catch (error) {
     console.error("CSV import failed", error);
-    return NextResponse.json({ error: getErrorMessage(error) }, { status: 400 });
+    return NextResponse.json(
+      { error: getErrorMessage(error) },
+      { headers: noStoreHeaders, status: 400 },
+    );
   }
 }
