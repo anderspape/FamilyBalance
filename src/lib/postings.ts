@@ -234,6 +234,10 @@ function compactDescription(value: string) {
   return value.length > 54 ? `${value.slice(0, 51).trim()}...` : value;
 }
 
+function stripAmountNote(value: string) {
+  return value.replace(/\s*\([^)]*kr\.\)$/i, "");
+}
+
 function posterHref(params: Record<string, string>) {
   const searchParams = new URLSearchParams(params);
   return `/poster?${searchParams.toString()}`;
@@ -993,6 +997,10 @@ export function buildDashboardDataFromPostings(
         ? `Der er ${formatKr(Math.round(net))} tilbage efter udgifter og opsparing.`
         : `Der mangler ${formatKr(Math.abs(Math.round(net)))} for at måneden går i nul efter udgifter og opsparing.`;
 
+    if (projectedIncome.isProjected) {
+      return `${netSentence} Løn ultimo er medregnet.`;
+    }
+
     return `${netSentence} ${expenseChange} ${incomeSentence}`;
   }
 
@@ -1059,7 +1067,6 @@ export function buildDashboardDataFromPostings(
     key: string,
     items: ReturnType<typeof buildCategorySpend>,
   ): BudgetInsight[] {
-    const label = displayMonth(key);
     const income = monthlyIncome[key] ?? 0;
     const projectedIncome = incomeProjection(key);
     const expenses = (monthlyBills[key] ?? 0) + (monthlySpending[key] ?? 0);
@@ -1075,20 +1082,12 @@ export function buildDashboardDataFromPostings(
       title: net >= 0 ? "Måneden har luft" : "Måneden er under pres",
       body:
         net >= 0
-          ? `${label} har ${formatKr(Math.round(net))} tilbage efter udgifter og opsparing.${
-              projectedIncome.isProjected
-                ? ` Det inkluderer ca. ${formatKr(
-                    Math.round(projectedIncome.projectedAmount),
-                  )} forventet løn ultimo.`
-                : " Det giver plads til ekstra opsparing eller uforudsete udgifter."
-            }`
-          : `${label} mangler ${formatKr(Math.abs(Math.round(net)))} for at gå i nul efter udgifter og opsparing.${
-              projectedIncome.isProjected
-                ? ` Det er efter forventet løn ultimo på ca. ${formatKr(
-                    Math.round(projectedIncome.expectedIncome),
-                  )}.`
-                : " Start med de største udgiftsdrivere, før du ændrer småposter."
-            }`,
+          ? projectedIncome.isProjected
+            ? "Forventet løn ultimo er medregnet."
+            : "Der er plads efter udgifter og opsparing."
+          : projectedIncome.isProjected
+            ? "Selv med forventet løn ultimo er måneden stram."
+            : "Start med de største udgiftsposter.",
       metric: formatSignedKr(Math.round(net)),
       actionLabel: net >= 0 ? "Se poster" : "Se udgifter",
       actionHref: posterHref({ period: "month", month: key }),
@@ -1098,8 +1097,6 @@ export function buildDashboardDataFromPostings(
     const top = items[0];
     if (top && expenses > 0) {
       const topShare = Math.round((top.value / expenses) * 100);
-      const topPrevious = categorySum(records, previousKey, top.category);
-      const topChange = percentChange(top.value, topPrevious);
       const descriptions = topCategoryDescriptions(key, top.category);
       const billValue = sum(
         records,
@@ -1111,22 +1108,16 @@ export function buildDashboardDataFromPostings(
       );
       const typeText =
         billValue / top.value >= 0.5 ? "Regninger" : "Forbrugsposter";
-      const driverText = descriptions.length
-        ? ` De største poster er ${descriptions.join(" og ")}.`
-        : "";
+      const firstDriver = descriptions[0];
 
       insights.push({
         id: `${key}-top-spending-driver`,
         type: "category",
         severity: topShare >= 40 ? "warning" : "neutral",
-        title: `${typeText} i ${top.category} driver udgifterne`,
-        body: `${typeText} i ${top.category} fylder ${topShare}% af månedens udgifter med ${top.amount}.${
-          topChange === null || topChange === 0
-            ? ""
-            : ` Det er ${Math.abs(topChange)}% ${
-                topChange < 0 ? "lavere" : "højere"
-              } end måneden før.`
-        }${driverText}`,
+        title: top.category,
+        body: firstDriver
+          ? `${typeText} fylder mest. Største post: ${firstDriver}.`
+          : `${typeText} fylder mest denne måned.`,
         metric: `${topShare}%`,
         actionLabel: "Se poster",
         actionHref: posterHref({ period: "month", month: key, q: top.category }),
@@ -1163,29 +1154,21 @@ export function buildDashboardDataFromPostings(
         categoryChange.category,
       );
       const driverSentence = isLower
-        ? previousDrivers.length
-          ? ` Sidste måned fyldte især ${previousDrivers.join(" og ")}, så faldet ligner en konkret engangspost eller afsluttet betaling.`
-          : ""
-        : currentDrivers.length
-          ? ` Denne måned skyldes stigningen især ${currentDrivers.join(" og ")}.`
-          : "";
+        ? previousDrivers[0]
+          ? `Sidste måned trak ${stripAmountNote(previousDrivers[0])}.`
+          : "Faldet ligner en engangspost."
+        : currentDrivers[0]
+          ? `Stigningen ligger især i ${stripAmountNote(currentDrivers[0])}.`
+          : "Stigningen ligger i konkrete poster.";
 
       insights.push({
         id: `${key}-category-change-${categoryChange.category}`,
         type: "anomaly",
         severity: isLower ? "positive" : "warning",
         title: isLower
-          ? `${categoryChange.category} er faldet markant`
-          : `${categoryChange.category} ligger højere end normalt`,
-        body: `${categoryChange.category} er ${Math.abs(
-          categoryChange.change,
-        )}% ${
-          isLower ? "lavere" : "højere"
-        } end sidste måned. Det svarer til ${formatKr(
-          Math.abs(Math.round(categoryChange.difference)),
-        )} ${
-          isLower ? "mindre" : "mere"
-        } i månedens udgifter.${driverSentence}`,
+          ? `${categoryChange.category} faldt`
+          : `${categoryChange.category} steg`,
+        body: driverSentence,
         metric: `${isLower ? "↓" : "↑"} ${Math.abs(categoryChange.change)}%`,
         actionLabel: "Se kategori",
         actionHref: posterHref({
@@ -1225,9 +1208,7 @@ export function buildDashboardDataFromPostings(
         type: "recurring",
         severity: isLower ? "positive" : "warning",
         title: "Fast betaling har ændret sig",
-        body: `${recurringChange.current.label} er ${Math.abs(
-          recurringChange.change,
-        )}% ${isLower ? "lavere" : "højere"} end sidste måned. Tjek om ændringen er forventet, især hvis posten er en regning eller aftale.`,
+        body: `${recurringChange.current.label} er ${isLower ? "lavere" : "højere"} end normalt. Tjek om ændringen er forventet.`,
         metric: formatKr(Math.round(recurringChange.current.amount)),
         actionLabel: "Se post",
         actionHref: posterHref({
@@ -1260,8 +1241,8 @@ export function buildDashboardDataFromPostings(
         id: `${key}-cleanup-needed`,
         type: "data_quality",
         severity: uncategorizedCount >= 5 ? "warning" : "neutral",
-        title: "Datagrundlaget kan blive skarpere",
-        body: `${parts.join(", ")}. Ret det, så coachen kan forklare måneden mere præcist.`,
+        title: "Ryd op i data",
+        body: `${parts.join(", ")}. Det gør overblikket mere præcist.`,
         metric: `${uncategorizedCount + accountsWithoutBalance}`,
         actionLabel: uncategorizedCount ? "Gennemgå poster" : "Gå til import",
         actionHref: uncategorizedCount
@@ -1271,19 +1252,8 @@ export function buildDashboardDataFromPostings(
       });
     }
 
-    const severityRank = {
-      critical: 4,
-      warning: 3,
-      positive: 2,
-      neutral: 1,
-    };
-
     return insights
-      .sort(
-        (a, b) =>
-          severityRank[b.severity] - severityRank[a.severity] ||
-          b.priority - a.priority,
-      )
+      .sort((a, b) => b.priority - a.priority)
       .slice(0, 3)
       .map(toBudgetInsight);
   }
@@ -1295,13 +1265,12 @@ export function buildDashboardDataFromPostings(
   ) {
     const status = insights.find((insight) => insight.type === "status");
     const driver = insights.find((insight) => insight.type === "category");
-    const anomaly = insights.find((insight) => insight.type === "anomaly");
 
     if (!status) {
       return fallbackSummary;
     }
 
-    return [status.body, driver?.body, anomaly?.body]
+    return [`${status.title}. ${status.body}`, driver ? `Fokus: ${driver.title}.` : ""]
       .filter(Boolean)
       .join(" ")
       .replace(displayMonth(key), "Måneden");
